@@ -1,0 +1,109 @@
+[ 4515.011000] acsd invoked oom-killer: gfp_mask=0x201da, order=0, oom_adj=0, oom_score_adj=0
+[ 4515.019000] Call Trace:
+[ 4515.022000] [<8002eba0>] vprintk+0x4c0/0x530
+[ 4515.026000] [<8002ebc0>] vprintk+0x4e0/0x530
+[ 4515.030000] [<80039a2c>] del_timer_sync+0x38/0x54
+[ 4515.035000] [<8035b6d4>] schedule_timeout+0xa4/0xcc
+[ 4515.040000] [<80358a5c>] dump_header.isra.10+0x70/0x178
+[ 4515.046000] [<801ca770>] MCUProtocolWaitForCommandAnswer+0xa4/0x114
+[ 4515.052000] [<80357e54>] dump_stack+0x8/0x34
+[ 4515.056000] [<80358a5c>] dump_header.isra.10+0x70/0x178
+[ 4515.062000] [<8004e8fc>] blocking_notifier_call_chain+0x14/0x20
+[ 4515.068000] [<8007d3ac>] out_of_memory+0xb8/0x388
+[ 4515.073000] [<80081250>] __alloc_pages_nodemask+0x52c/0x634
+[ 4515.078000] [<80079cfc>] find_get_page+0x98/0xb8
+[ 4515.083000] [<8007c4c4>] filemap_fault+0x2e4/0x424
+[ 4515.088000] [<80090004>] __do_fault+0xd0/0x3a4
+[ 4515.093000] [<8009263c>] handle_pte_fault+0x2d4/0x990
+[ 4515.098000] [<802676f8>] dev_ifsioc+0x3dc/0x41c
+[ 4515.103000] [<80092e10>] handle_mm_fault+0x118/0x158
+[ 4515.108000] [<8018789c>] __up_read+0x24/0xac
+[ 4515.112000] [<8001d3c4>] do_page_fault+0x114/0x400
+[ 4515.117000] [<8005d4d8>] ktime_get_ts+0x70/0xc4
+[ 4515.122000] [<8005d4d8>] ktime_get_ts+0x70/0xc4
+[ 4515.126000] [<800b5378>] poll_select_copy_remaining+0x70/0x13c
+[ 4515.132000] [<800b58f0>] poll_select_set_timeout+0x68/0x9c
+[ 4515.138000] [<800b60bc>] sys_select+0xe0/0x10c
+[ 4515.143000] [<800a45b4>] sys_read+0x50/0x98
+[ 4515.147000] [<80013344>] ret_from_exception+0x0/0x10
+[ 4515.152000] 
+[ 4515.153000] 
+[ 4515.155000] Call Trace:
+[ 4515.157000] [<80357e54>] dump_stack+0x8/0x34
+[ 4515.162000] [<80358a5c>] dump_header.isra.10+0x70/0x178
+[ 4515.167000] [<8007d3ac>] out_of_memory+0xb8/0x388
+[ 4515.172000] [<80081250>] __alloc_pages_nodemask+0x52c/0x634
+[ 4515.178000] [<8007c4c4>] filemap_fault+0x2e4/0x424
+[ 4515.183000] [<80090004>] __do_fault+0xd0/0x3a4
+[ 4515.187000] [<8009263c>] handle_pte_fault+0x2d4/0x990
+[ 4515.193000] [<80092e10>] handle_mm_fault+0x118/0x158
+[ 4515.198000] [<8001d3c4>] do_page_fault+0x114/0x400
+[ 4515.203000] [<80013344>] ret_from_exception+0x0/0x10
+[ 4515.208000] 
+[ 4515.209000] FAP Information:
+[ 4515.212000] FAP0: [0]:0000fabf [1]:000011ad [2]:00000000 [3]:00000000 [4]:00000000 [5]:00000000 [6]:00000000 [7]:00000000 [8]:00000000 [9]:00000000 
+[ 4515.226000] FAP1: [0]:0000fabf [1]:000011ae [2]:00000000 [3]:00000000 [4]:00000000 [5]:00000000 [6]:00000000 [7]:00000000 [8]:00000000 [9]:00000000 
+[ 4515.240000] 
+[ 4515.241000] Mem-Info:
+[ 4515.243000] DMA per-cpu:
+[ 4515.246000] CPU    0: hi:    0, btch:   1 usd:   0
+[ 4515.251000] CPU    1: hi:    0, btch:   1 usd:   0
+[ 4515.256000] Normal per-cpu:
+[ 4515.259000] CPU    0: hi:   42, btch:   7 usd:   6
+[ 4515.264000] CPU    1: hi:   42, btch:   7 usd:   8
+[ 4515.269000] active_anon:1164 inactive_anon:0 isolated_anon:0
+[ 4515.269000]  active_file:3 inactive_file:0 isolated_file:0
+[ 4515.269000]  unevictable:13271 dirty:0 writeback:0 unstable:0
+[ 4515.269000]  free:457 slab_reclaimable:321 slab_unreclaimable:11767
+[ 4515.269000]  mapped:7 shmem:0 pagetables:144 bounce:0
+[ 4515.298000] DMA free:608kB min:180kB low:224kB high:268kB active_anon:32kB inactive_anon:0kB active_file:0kB inactive_file:0kB unevictable:10772kB isolated(anon):0kB isolated(file):0kB present:16256kB mlocked:0kB dirty:0kB writeback:0kB mapped:0kB shmem:0kB slab_reclaimable:32kB slab_unreclaimable:184kB kernel_stack:0kB pagetables:0kB unstable:0kB bounce:0kB writeback_tmp:0kB pages_scanned:2693 all_unreclaimable? yes
+[ 4515.336000] lowmem_reserve[]: 0 107 107
+[ 4515.340000] Normal free:1220kB min:1236kB low:1544kB high:1852kB active_anon:4624kB inactive_anon:0kB active_file:12kB inactive_file:0kB unevictable:42312kB isolated(anon):0kB isolated(file):0kB present:109776kB mlocked:332kB dirty:0kB writeback:0kB mapped:28kB shmem:0kB slab_reclaimable:1252kB slab_unreclaimable:46884kB kernel_stack:1344kB pagetables:576kB unstable:0kB bounce:0kB writeback_tmp:0kB pages_scanned:64 all_unreclaimable? yes
+[ 4515.380000] lowmem_reserve[]: 0 0 0
+[ 4515.383000] DMA: 0*4kB 0*8kB 0*16kB 1*32kB 1*64kB 0*128kB 0*256kB 1*512kB 0*1024kB 0*2048kB 0*4096kB = 608kB
+[ 4515.393000] Normal: 3*4kB 1*8kB 1*16kB 1*32kB 0*64kB 1*128kB 0*256kB 0*512kB 1*1024kB 0*2048kB 0*4096kB = 1220kB
+[ 4515.404000] 13191 total pagecache pages
+[ 4515.417000] 31757 pages RAM
+[ 4515.419000] 1474 pages reserved
+[ 4515.422000] 51 pages shared
+[ 4515.425000] 24163 pages non-shared
+[ 4515.429000] [ pid ]   uid  tgid total_vm      rss cpu oom_adj oom_score_adj name
+[ 4515.436000] [  351]     0   351      352       19   0       0             0 init
+[ 4515.444000] [  648]     0   648      348       13   0       0             0 watchdog
+[ 4515.452000] [  659]     0   659      353       21   0       0             0 crond
+[ 4515.459000] [  673]     0   673      350       16   0       0             0 inetd
+[ 4515.467000] [  678]     0   678      338       44   1       0             0 syslog-ng
+[ 4515.475000] [  744]     0   744      262       17   0       0             0 wrapper
+[ 4515.483000] [  745]     0   745      909      140   0       0             0 nbd
+[ 4515.491000] [ 1405]     0  1405     1534       35   1       0             0 swmdk
+[ 4515.498000] [ 2933]     0  2933      262       17   1       0             0 wrapper
+[ 4515.506000] [ 2941]     0  2941      262       16   1       0             0 wrapper
+[ 4515.514000] [ 2960]     0  2960      351       18   1       0             0 udhcpc
+[ 4515.522000] [ 2990]     0  2990      351       18   1       0             0 udhcpc
+[ 4515.530000] [ 3007]     0  3007      262       17   0       0             0 wrapper
+[ 4515.538000] [ 3010]     0  3010      232       28   0       0             0 odhcp6c
+[ 4515.546000] [ 3091]     0  3091      351       16   0       0             0 loop.sh
+[ 4515.553000] [ 3117] 65534  3117      211       14   1       0             0 wold
+[ 4515.561000] [ 3141]     0  3141      317       30   1       0             0 miniupnpd
+[ 4515.569000] [ 3150] 65534  3150      342       25   1       0             0 lan-topology
+[ 4515.577000] [ 3152] 65534  3152      342       25   1       0             0 lan-topology
+[ 4515.586000] [ 3194] 65534  3194      287       33   1       0             0 dnsmasq
+[ 4515.594000] [ 3195]     0  3195      287       32   1       0             0 dnsmasq
+[ 4515.602000] [ 3208]     0  3208      334       51   1       0             0 eapd
+[ 4515.609000] [ 3213]     0  3213      466      165   1       0             0 nas
+[ 4515.617000] [ 3572]     0  3572      369       74   0       0             0 acsd
+[ 4515.624000] [ 3582]     0  3582      390       53   1       0             0 wps_monitor
+[ 4515.633000] [ 3635]     0  3635      262       17   1       0             0 wrapper
+[ 4515.640000] [ 3680]     0  3680      262       16   0       0             0 wrapper
+[ 4515.648000] [ 3696]     0  3696      571      154   1       0             0 lighttpd
+[ 4515.656000] [ 3699]     1  3699      628       31   1       0             0 apid
+[ 4515.664000] [ 3747]     0  3747      262       17   0       0             0 wrapper
+[ 4515.672000] [ 3755]     0  3755      262       18   1       0             0 wrapper
+[ 4515.680000] [ 3962]     1  3962      721       74   1       0             0 fastcgi
+[ 4515.688000] [ 9270]     0  9270      348       12   0       0             0 sleep
+[ 4515.695000] Kernel panic - not syncing: Out of memory: compulsory panic_on_oom is enabled
+[ 4515.695000] 
+[ 4515.711000] 
+[ 4515.711000] stopping CPU 1
+[ 4515.711000] Rebooting in 3 seconds..
+[ 4518.737000] kerSysMipsSoftReset: called on----

@@ -1,0 +1,68 @@
+#!/bin/sh
+
+set -e
+SRC="."
+
+if [ ! $(hostname) = "BRHOST" ]
+then
+	echo "[ERROR] This script should be run inside the Docker environment."
+	echo "Launch './docker/dockrun.sh' before running 'generate-env.sh'."
+	exit 1
+fi
+
+BR_DIR="${SRC}/buildroot-2015.02"
+if [ ! -d "${BR_DIR}" ]
+then
+	echo "[ERROR] buildroot-2015.02 folder not found."
+	exit 1
+fi
+
+user_br_input() {
+	read -p "To build with another file, please provide its filename (default=${BUILDROOT_CONFIG_FILE}): " BR_USER
+	if [ -z "$BR_USER" ]
+	then
+		return
+	fi
+	if [ -f "$BR_USER" ]
+	then
+		BUILDROOT_CONFIG_FILE=$BR_USER
+	else
+		echo "[ERROR] File '$BR_USER' not found."
+		user_br_input
+	fi
+}
+
+cd "${BR_DIR}"
+make qemu_mips_malta_defconfig
+
+echo "Starting 'make menuconfig'. You should load 'savedefconfig' and save on exit."
+read -p "Press Enter to continue." trash && unset trash
+make menuconfig
+
+BUILDROOT_CONFIG_FILE="savedefconfig"
+echo "The default Buildroot configuration file is '${savedefconfig}'."
+user_br_input
+echo "Starting 'make ${BUILDROOT_CONFIG_FILE}'."
+make "${BUILDROOT_CONFIG_FILE}"
+
+echo "Starting 'make linux-menuconfig'. You should follow the README guidelines for parameters."
+read -p "Press Enter to continue." trash && unset trash
+make linux-menuconfig
+
+echo "Starting 'make uclibc-menuconfig'. You should follow the README guidelines for parameters."
+read -p "Press Enter to continue." trash && unset trash
+make uclibc-menuconfig
+
+echo "Configuration done. Building kernel and filesystem."
+make
+
+VAL=$?
+
+if [ $VAL = 0 ]
+then
+	echo "[INFO] Success! Kernel and filesystem stored in './buildroot-2015.02/output/images'."
+	echo "[INFO] Exit this Docker container and launch './emulate'."
+else
+	echo "[ERROR] Failed to build kernel and filesystem."
+fi
+cd -

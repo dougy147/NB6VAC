@@ -1,0 +1,208 @@
+#nmap -p0- -Pn -v -A -T4 192.168.1.1
+Starting Nmap 7.94 ( https://nmap.org ) at 2024-04-13 14:56 CEST
+NSE: Loaded 156 scripts for scanning.
+NSE: Script Pre-scanning.
+Initiating NSE at 14:56
+Completed NSE at 14:56, 0.00s elapsed
+Initiating NSE at 14:56
+Completed NSE at 14:56, 0.00s elapsed
+Initiating NSE at 14:56
+Completed NSE at 14:56, 0.00s elapsed
+Initiating ARP Ping Scan at 14:56
+Scanning 192.168.1.1 [1 port]
+Completed ARP Ping Scan at 14:56, 0.05s elapsed (1 total hosts)
+Initiating Parallel DNS resolution of 1 host. at 14:56
+Completed Parallel DNS resolution of 1 host. at 14:56, 0.01s elapsed
+Initiating SYN Stealth Scan at 14:56
+Scanning 192.168.1.1 [65536 ports]
+sendto in send_ip_packet_sd: sendto(6, packet, 44, 0, 192.168.1.1, 16) => Operation not permitted
+Offending packet: TCP localhost:42087 > 192.168.1.1:53 S ttl=57 id=39784 iplen=44  seq=2250069918 win=1024 <mss 1460>
+sendto in send_ip_packet_sd: sendto(6, packet, 44, 0, 192.168.1.1, 16) => Operation not permitted
+Offending packet: TCP localhost:42089 > 192.168.1.1:53 S ttl=41 id=16251 iplen=44  seq=2250200988 win=1024 <mss 1460>
+Discovered open port 80/tcp on 192.168.1.1
+Discovered open port 1288/tcp on 192.168.1.1
+SYN Stealth Scan Timing: About 23.69% done; ETC: 14:58 (0:01:40 remaining)
+Stats: 0:00:52 elapsed; 0 hosts completed (1 up), 1 undergoing SYN Stealth Scan
+SYN Stealth Scan Timing: About 48.35% done; ETC: 14:57 (0:00:56 remaining)
+Discovered open port 49152/tcp on 192.168.1.1
+Discovered open port 1287/tcp on 192.168.1.1
+Completed SYN Stealth Scan at 14:57, 87.50s elapsed (65536 total ports)
+Initiating Service scan at 14:57
+Scanning 4 services on 192.168.1.1
+WARNING: Service 192.168.1.1:49152 had already soft-matched upnp, but now soft-matched rtsp; ignoring second value
+WARNING: Service 192.168.1.1:49152 had already soft-matched upnp, but now soft-matched sip; ignoring second value
+Completed Service scan at 14:57, 21.23s elapsed (4 services on 1 host)
+Initiating OS detection (try #1) against 192.168.1.1
+Retrying OS detection (try #2) against 192.168.1.1
+NSE: Script scanning 192.168.1.1.
+Initiating NSE at 14:57
+Completed NSE at 14:59, 60.68s elapsed
+Initiating NSE at 14:59
+Completed NSE at 14:59, 0.46s elapsed
+Initiating NSE at 14:59
+Completed NSE at 14:59, 0.00s elapsed
+Nmap scan report for 192.168.1.1
+Host is up (0.0085s latency).
+Not shown: 65532 filtered tcp ports (no-response)
+PORT      STATE SERVICE     VERSION
+80/tcp    open  http        lighttpd
+|_http-server-header: Server
+|_http-title: Box -&nbsp;Accueil
+|_http-favicon: Unknown favicon MD5: 94D3927A1DC46C1DAF81F8A48D49BC43
+| http-methods:
+|   Supported Methods: GET POST PUT DELETE OPTIONS HEAD
+|_  Potentially risky methods: PUT DELETE
+1287/tcp  open  routematch?
+| fingerprint-strings:
+|   NULL:
+|_    diaglog[4093] [push/] aborted: no default route defined
+1288/tcp  open  ssh         Dropbear sshd 2014.65 (protocol 2.0)
+49152/tcp open  upnp        MiniUPnP 1.9 (UPnP 1.1)
+| fingerprint-strings:
+|   FourOhFourRequest, GetRequest:
+|     HTTP/1.0 404 Not Found
+|     Content-Type: text/html
+|     Connection: close
+|     Content-Length: 134
+
+|     Server: neufbox/neufbox UPnP/1.1 MiniUPnPd/1.9
+|     Ext:
+|     <HTML><HEAD><TITLE>404 Not Found</TITLE></HEAD><BODY><H1>Not Found</H1>The requested URL was not found on this server.</BODY></HTML>
+|   GenericLines:
+|     501 Not Implemented
+|     Content-Type: text/html
+|     Connection: close
+|     Content-Length: 149
+|     Server: neufbox/neufbox UPnP/1.1 MiniUPnPd/1.9
+|     Ext:
+|     <HTML><HEAD><TITLE>501 Not Implemented</TITLE></HEAD><BODY><H1>Not Implemented</H1>The HTTP Method is not implemented by this server.</BODY></HTML>
+|   HTTPOptions:
+|     HTTP/1.0 501 Not Implemented
+|     Content-Type: text/html
+|     Connection: close
+|     Content-Length: 149
+|     Server: neufbox/neufbox UPnP/1.1 MiniUPnPd/1.9
+|     Ext:
+|     <HTML><HEAD><TITLE>501 Not Implemented</TITLE></HEAD><BODY><H1>Not Implemented</H1>The HTTP Method is not implemented by this server.</BODY></HTML>
+|   RTSPRequest:
+|     RTSP/1.0 501 Not Implemented
+|     Content-Type: text/html
+|     Connection: close
+|     Content-Length: 149
+|     Server: neufbox/neufbox UPnP/1.1 MiniUPnPd/1.9
+|     Ext:
+|     <HTML><HEAD><TITLE>501 Not Implemented</TITLE></HEAD><BODY><H1>Not Implemented</H1>The HTTP Method is not implemented by this server.</BODY></HTML>
+|   SIPOptions:
+|     SIP/2.0 501 Not Implemented
+|     Content-Type: text/html
+|     Connection: close
+|     Content-Length: 149
+|     Server: neufbox/neufbox UPnP/1.1 MiniUPnPd/1.9
+|     Ext:
+|_    <HTML><HEAD><TITLE>501 Not Implemented</TITLE></HEAD><BODY><H1>Not Implemented</H1>The HTTP Method is not implemented by this server.</BODY></HTML>
+2 services unrecognized despite returning data. If you know the service/version, please submit the following fingerprints at https://nmap.org/cgi-bin/submit.cgi?new-service :
+==============NEXT SERVICE FINGERPRINT (SUBMIT INDIVIDUALLY)==============
+SF-Port1287-TCP:V=7.94%I=7%D=4/13%Time=661A813E%P=x86_64-pc-linux-gnu%r(NU
+SF:LL,38,"diaglog\[4093\]\x20\[push/\]\x20aborted:\x20no\x20default\x20rou
+SF:te\x20defined\n");
+==============NEXT SERVICE FINGERPRINT (SUBMIT INDIVIDUALLY)==============
+SF-Port49152-TCP:V=7.94%I=7%D=4/13%Time=661A8144%P=x86_64-pc-linux-gnu%r(F
+SF:ourOhFourRequest,117,"HTTP/1\.0\x20404\x20Not\x20Found\r\nContent-Type:
+SF:\x20text/html\r\nConnection:\x20close\r\nContent-Length:\x20134\r\nServ
+SF:er:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<H
+SF:TML><HEAD><TITLE>404\x20Not\x20Found</TITLE></HEAD><BODY><H1>Not\x20Fou
+SF:nd</H1>The\x20requested\x20URL\x20was\x20not\x20found\x20on\x20this\x20
+SF:server\.</BODY></HTML>\r\n")%r(GenericLines,124,"\x20501\x20Not\x20Impl
+SF:emented\r\nContent-Type:\x20text/html\r\nConnection:\x20close\r\nConten
+SF:t-Length:\x20149\r\nServer:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnP
+SF:d/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20Not\x20Implemented</TIT
+SF:LE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x20HTTP\x20Method\x20is\
+SF:x20not\x20implemented\x20by\x20this\x20server\.</BODY></HTML>\r\n")%r(G
+SF:etRequest,117,"HTTP/1\.0\x20404\x20Not\x20Found\r\nContent-Type:\x20tex
+SF:t/html\r\nConnection:\x20close\r\nContent-Length:\x20134\r\nServer:\x20
+SF:neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<HTML><HE
+SF:AD><TITLE>404\x20Not\x20Found</TITLE></HEAD><BODY><H1>Not\x20Found</H1>
+SF:The\x20requested\x20URL\x20was\x20not\x20found\x20on\x20this\x20server\
+SF:.</BODY></HTML>\r\n")%r(HTTPOptions,12C,"HTTP/1\.0\x20501\x20Not\x20Imp
+SF:lemented\r\nContent-Type:\x20text/html\r\nConnection:\x20close\r\nConte
+SF:nt-Length:\x20149\r\nServer:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPn
+SF:Pd/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20Not\x20Implemented</TI
+SF:TLE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x20HTTP\x20Method\x20is
+SF:\x20not\x20implemented\x20by\x20this\x20server\.</BODY></HTML>\r\n")%r(
+SF:RTSPRequest,12C,"RTSP/1\.0\x20501\x20Not\x20Implemented\r\nContent-Type
+SF::\x20text/html\r\nConnection:\x20close\r\nContent-Length:\x20149\r\nSer
+SF:ver:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<
+SF:HTML><HEAD><TITLE>501\x20Not\x20Implemented</TITLE></HEAD><BODY><H1>Not
+SF:\x20Implemented</H1>The\x20HTTP\x20Method\x20is\x20not\x20implemented\x
+SF:20by\x20this\x20server\.</BODY></HTML>\r\n")%r(SIPOptions,12B,"SIP/2\.0
+SF:\x20501\x20Not\x20Implemented\r\nContent-Type:\x20text/html\r\nConnecti
+SF:on:\x20close\r\nContent-Length:\x20149\r\nServer:\x20neufbox/neufbox\x2
+SF:0UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20N
+SF:ot\x20Implemented</TITLE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x2
+SF:0HTTP\x20Method\x20is\x20not\x20implemented\x20by\x20this\x20server\.</
+SF:BODY></HTML>\r\n");
+Aggressive OS guesses: Linux 2.6.32 - 3.10 (97%), Linux 2.6.32 - 3.13 (97%), Linux 2.6.32 - 3.5 (92%), DD-WRT v24 or v30 (Linux 3.10)
+(91%), Linux 3.0 (91%), Linux 3.2 - 3.16 (91%), Linux 3.2 - 3.8 (91%), Linux 2.6.32 (91%), Linux 3.10 - 4.11 (91%), Linux 3.2 - 4.9 (91%)
+SF-Port1287-TCP:V=7.94%I=7%D=4/13%Time=661A813E%P=x86_64-pc-linux-gnu%r(NU
+SF:LL,38,"diaglog\[4093\]\x20\[push/\]\x20aborted:\x20no\x20default\x20rou
+SF:te\x20defined\n");
+==============NEXT SERVICE FINGERPRINT (SUBMIT INDIVIDUALLY)==============
+SF-Port49152-TCP:V=7.94%I=7%D=4/13%Time=661A8144%P=x86_64-pc-linux-gnu%r(F
+SF:ourOhFourRequest,117,"HTTP/1\.0\x20404\x20Not\x20Found\r\nContent-Type:
+SF:\x20text/html\r\nConnection:\x20close\r\nContent-Length:\x20134\r\nServ
+SF:er:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<H
+SF:TML><HEAD><TITLE>404\x20Not\x20Found</TITLE></HEAD><BODY><H1>Not\x20Fou
+SF:nd</H1>The\x20requested\x20URL\x20was\x20not\x20found\x20on\x20this\x20
+SF:server\.</BODY></HTML>\r\n")%r(GenericLines,124,"\x20501\x20Not\x20Impl
+SF:emented\r\nContent-Type:\x20text/html\r\nConnection:\x20close\r\nConten
+SF:t-Length:\x20149\r\nServer:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnP
+SF:d/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20Not\x20Implemented</TIT
+SF:LE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x20HTTP\x20Method\x20is\
+SF:x20not\x20implemented\x20by\x20this\x20server\.</BODY></HTML>\r\n")%r(G
+SF:etRequest,117,"HTTP/1\.0\x20404\x20Not\x20Found\r\nContent-Type:\x20tex
+SF:t/html\r\nConnection:\x20close\r\nContent-Length:\x20134\r\nServer:\x20
+SF:neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<HTML><HE
+SF:AD><TITLE>404\x20Not\x20Found</TITLE></HEAD><BODY><H1>Not\x20Found</H1>
+SF:The\x20requested\x20URL\x20was\x20not\x20found\x20on\x20this\x20server\
+SF:.</BODY></HTML>\r\n")%r(HTTPOptions,12C,"HTTP/1\.0\x20501\x20Not\x20Imp
+SF:lemented\r\nContent-Type:\x20text/html\r\nConnection:\x20close\r\nConte
+SF:nt-Length:\x20149\r\nServer:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPn
+SF:Pd/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20Not\x20Implemented</TI
+SF:TLE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x20HTTP\x20Method\x20is
+SF:\x20not\x20implemented\x20by\x20this\x20server\.</BODY></HTML>\r\n")%r(
+SF:RTSPRequest,12C,"RTSP/1\.0\x20501\x20Not\x20Implemented\r\nContent-Type
+SF::\x20text/html\r\nConnection:\x20close\r\nContent-Length:\x20149\r\nSer
+SF:ver:\x20neufbox/neufbox\x20UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<
+SF:HTML><HEAD><TITLE>501\x20Not\x20Implemented</TITLE></HEAD><BODY><H1>Not
+SF:\x20Implemented</H1>The\x20HTTP\x20Method\x20is\x20not\x20implemented\x
+SF:20by\x20this\x20server\.</BODY></HTML>\r\n")%r(SIPOptions,12B,"SIP/2\.0
+SF:\x20501\x20Not\x20Implemented\r\nContent-Type:\x20text/html\r\nConnecti
+SF:on:\x20close\r\nContent-Length:\x20149\r\nServer:\x20neufbox/neufbox\x2
+SF:0UPnP/1\.1\x20MiniUPnPd/1\.9\r\nExt:\r\n\r\n<HTML><HEAD><TITLE>501\x20N
+SF:ot\x20Implemented</TITLE></HEAD><BODY><H1>Not\x20Implemented</H1>The\x2
+SF:0HTTP\x20Method\x20is\x20not\x20implemented\x20by\x20this\x20server\.</
+SF:BODY></HTML>\r\n");
+Aggressive OS guesses: Linux 2.6.32 - 3.10 (97%), Linux 2.6.32 - 3.13 (97%), Linux 2.6.32 - 3.5 (92%), DD-WRT v24 or v30 (Linux 3.10)
+(91%), Linux 3.0 (91%), Linux 3.2 - 3.16 (91%), Linux 3.2 - 3.8 (91%), Linux 2.6.32 (91%), Linux 3.10 - 4.11 (91%), Linux 3.2 - 4.9 (91%)
+No exact OS matches for host (test conditions non-ideal).
+Uptime guess: 0.001 days (since Sat Apr 13 14:57:46 2024)
+Network Distance: 1 hop
+TCP Sequence Prediction: Difficulty=261 (Good luck!)
+IP ID Sequence Generation: All zeros
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   8.53 ms 192.168.1.1
+
+NSE: Script Post-scanning.
+Initiating NSE at 14:59
+Completed NSE at 14:59, 0.00s elapsed
+Initiating NSE at 14:59
+Completed NSE at 14:59, 0.00s elapsed
+Initiating NSE at 14:59
+Completed NSE at 14:59, 0.00s elapsed
+Read data files from: /usr/bin/../share/nmap
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 174.08 seconds
+           Raw packets sent: 131201 (5.776MB) | Rcvd: 91 (4.656KB)

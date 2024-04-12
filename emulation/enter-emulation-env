@@ -1,0 +1,159 @@
+#!/bin/sh
+
+set -e
+SRC=`realpath $(dirname $0)`
+
+# We are tweaking old stuff. For this reason, we
+# need to install an old version of Buildroot to
+# further compile Kernel 3.4.11-rt19. To install
+# Buildroot 2015.02, we need a distribution that
+# allows us to: Debian Wheezy. That's the reason
+# for the use of a Docker environment. Let's go!
+
+# Download and extract Buildroot 2015.02
+BR_FILE="buildroot-2015.02.tar.gz"
+BR_URL="https://buildroot.org/downloads/${BR_FILE}"
+if [ ! -f "${BR_FILE}" ]
+then
+	wget "${BR_URL}"
+fi
+BR_DIR="${SRC}/buildroot-2015.02"
+if [ ! -d "${BR_DIR}" ]
+then
+	pushd "${SRC}"
+	tar zxvf "${BR_FILE}"
+	popd
+fi
+
+# Create the Docker environment to use Buildroot
+# with an old-enough-Linux, able to generate the
+# router's kernel and filesystem the same way. #
+
+if [ ! -d ./docker ]
+then
+	mkdir docker
+fi
+cd ./docker
+
+cat > Dockerfile << EOF
+FROM debian/eol:wheezy
+# ###############################################################
+# # IMPORTANT NOTE:					       #
+# #  This Dockerfile is richly inspired (when it is not just a  #
+# #  pale copy) of Valerio Di Giampietro's work findable here:  #
+# #        https://github.com/digiampietro/hacking-gemtek       #
+# #  We are diverging from this original source to fit our own  #
+# #  purposes, but are thankful for this quality resource, and  #
+# #  recommand our potential users to take a look at Valerio's  #
+# #  work and YouTube channel about reverse engineering basics. #
+# ###############################################################
+ENV BUILDROOT_MIPS4KC 0.8.3
+ENV DEBIAN_FRONTEND noninteractive
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+RUN apt-get update
+RUN apt-get upgrade
+RUN apt-get install -y -q bash bc binutils build-essential bzip2 ca-certificates cpio debianutils g++ gcc gzip libncurses5-dev locales make patch perl python rsync sed tar unzip wget git fakeroot login libqt4-dev pkg-config procps libqt4-dev-bin
+RUN sed -i "s/^# en_US.UTF-8/en_US.UTF-8/" /etc/locale.gen && locale-gen && update-locale LANG=en_US.UTF-8
+RUN mkdir -p      /src/misc
+ADD startup.sh    /src/misc/startup.sh
+RUN chmod a+x     /src/misc/startup.sh
+ENTRYPOINT cd     /src/misc ; ./startup.sh
+EOF
+
+# Dockbuild
+cat > dockbuild.sh << EOF
+#!/bin/sh
+docker build -t="nb6vac/buildroot-mips4kc" .
+EOF
+
+# Dockrun.sh
+cat > dockrun.sh << EOF
+#!/bin/sh
+
+export GDISPLAY=unix/\$DISPLAY # forward X11 display to the host machine
+export GUSERNAME=`id -u -n`    # current user's username
+export GUID=`id -u`            # current user's user id
+export GGROUP=`id -g -n`       # current user's primary group name
+export GGID=`id -g`            # current user's primary group id
+export GHOME=\$HOME            # current user's home directory
+#export GSHELL=\$SHELL         # current user's shell
+export GSHELL=/bin/bash        # current user's shell
+export GRUNXTERM=0             # flag to start lxterminal, useful in windows
+export GPWD=`pwd`              # current working directory
+
+docker run      -h BRHOST                          \
+                --rm                               \
+                -v /tmp/.X11-unix:/tmp/.X11-unix   \
+                -v \$HOME:\$HOME                   \
+                -e DISPLAY=\$GDISPLAY              \
+                -e GUSERNAME=\$GUSERNAME           \
+                -e GUID=\$GUID                     \
+                -e GGROUP=\$GGROUP                 \
+                -e GGID=\$GGID                     \
+                -e GHOME=\$GHOME                   \
+                -e GSHELL=/bin/bash                \
+                -e GRUNXTERM=\$GRUNXTERM           \
+                -e GPWD=\$GPWD                     \
+                -it digiampietro/buildroot-mips4kc
+EOF
+
+# Startup.sh
+cat > startup.sh << EOF
+#!/bin/sh
+groupadd -g \$GGID \$GGROUP
+useradd  -u \$GUID -s \$GSHELL -c \$GUSERNAME -g \$GGID -M -d \$GHOME \$GUSERNAME
+usermod  -a -G sudo \$GUSERNAME
+echo \$GUSERNAME:docker | chpasswd
+if [ "\$GRUNXTERM" = "1" ]
+then
+    # become the current user and start a shell
+    su -l -c lxterminal \$GUSERNAME
+    # another root shel
+    lxterminal
+else
+    # become the current user and start a shell
+    su -l \$GUSERNAME
+    # another root shell
+    /bin/bash
+fi
+EOF
+
+DOCKER_NAME="nb6vac"
+DOCKER_TAG_NAME="buildroot-mips4kc"
+echo "[INFO] Building Docker image (${DOCKER_NAME}/${DOCKER_TAG_NAME})."
+docker build -t="${DOCKER_NAME}/${DOCKER_TAG_NAME}" .
+echo "[INFO] Docker container image created."
+
+cd -
+
+# We will know run an old version of Buildroot in our Docker container.
+# Start Buildroot configuration and patch files.
+pushd "${BR_DIR}"
+mkdir -p ./dl
+
+pushd ./dl
+if [ ! -f ../../linux-3.4.11.tar.xz ]
+then
+	echo "[INFO] Downloading missing resource: linux-3.4.11.tar.xz"
+	wget -nc https://www.kernel.org/pub/linux/kernel/v3.x/linux-3.4.11.tar.xz
+	cp linux-3.4.11.tar.xz ../../linux-3.4.11.tar.xz
+else
+	cp ../../linux-3.4.11.tar.xz .
+fi
+if [ ! -f ../../pkgconf-0.8.9.tar.bz2 ]
+then
+	echo "[INFO] Downloading missing resource: pkgconf-0.8.9.tar.bz2"
+	wget -nc https://distfiles.dereferenced.org/pkgconf/pkgconf-0.8.9.tar.bz2
+	cp pkgconf-0.8.9.tar.bz2 ../../pkgconf-0.8.9.tar.bz2
+else
+	cp ../../pkgconf-0.8.9.tar.bz2 .
+fi
+popd
+popd
+
+BR_CONFIG_FILE="savedefconfig"
+cp "${SRC}/${BR_CONFIG_FILE}" "${BR_DIR}/${BR_CONFIG_FILE}"
+pushd "${SRC}/docker"
+echo "[INFO] Entering Docker environment."
+sh ./dockrun.sh
+popd
