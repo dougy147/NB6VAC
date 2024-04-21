@@ -1,9 +1,10 @@
 The goal is to flash an open firmware or to gain root access on a NB6VAC router.
 Any help welcome!
 
-| NOTE                       |
-|:---------------------------|
-| _Reading this README reflects the act of reverse engineering: you need to find order in apparent chaos. Good luck!_ |
+| CURRENT STATE                |
+|:-----------------------------|
+| ✅ root access done!       |
+| ⏲  trying to setup OpenWrt |
 
 # Material
 
@@ -233,7 +234,7 @@ Here is a transposition of the above partition table in number of blocks of 1024
   6   mtd5   66,560  130,048   66,488  data
 ```
 
-I know nothing about MTD or UBIFS, but we can see overlaps of `30720` blocks between `*-images` and their matching filesystems.
+I know nothing about MTD or [UBIFS](https://www.sciencedirect.com/science/article/pii/S2666281723002081), but we can see overlaps of `30720` blocks between `*-images` and their matching filesystems.
 For example, `rootfs-image` and `rootfs` both ends at block `66432`, but `rootfs-image` starts earlier, containing a portion of `2432` unshared blocks with `rootfs` (2490368 bytes). The same goes for `upgrade-image` and `upgrade`.
 
 Extracting those unshared portions from `rootfs-image` and `upgrade-image` with `dd`, we can see they perfectly match JFFS2 partitions contained in some official firmwares (`cferam.000` + `secram.000` + `vmlinux.lz` + `vmlinux.sig`).
@@ -522,7 +523,7 @@ Password:
 Login incorrect
 ```
 
-We will take a look later to `/etc/shadow` in the filesystem which contains a `root` user and its hashed password.
+We will take a look later at how to circumvent it by flashing a crafted firmware containing our own `root` hashed password in `/etc/shadow`.
 
 * After Busybox, scripts continue to be called in that order (leaving it here just in case):
 
@@ -638,48 +639,17 @@ PORT      STATE SERVICE     VERSION
 
 ### SSH
 
-Based on [that post](https://lafibre.info/sfr-la-fibre/nb6vac-telnet-et-autres-infos-cachees-de-la-box/) it seems like we need a key to access the router via ssh.
+Even with root access, I did not manage to connect with `ssh` to the router:
 
 ```console
 $ ssh 192.168.1.1 -p 1288
 Unable to negotiate with 192.168.1.1 port 1288: no matching host key type found. Their offer: ssh-rsa,ssh-dss
 ```
 
-We'll probably never access those keys, and need to find other ways to be granted root access on the router.
-
-Looking inside `/usr/bin/dropbearkey` of the UBIfs, there are what seems public keys?
-
-```console
-$ strings -n6 ./usr/bin/dropbearkey
-[...]
-ECC-256
-FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
-5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
-FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
-6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296
-4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5
-ECC-384
-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFF0000000000000000FFFFFFFF
-B3312FA7E23EE7E4988E056BE3F82D19181D9C6EFE8141120314088F5013875AC656398D8A2ED19D2A85C8EDD3EC2AEF
-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
-AA87CA22BE8B05378EB1C71EF320AD746E1D3B628BA79B9859F741E082542A385502F25DBF55296C3A545E3872760AB7
-3617DE4A96262C6F5D9E98BF9292DC29F8F41DBD289A147CE9DA3113B5F0B8C00A60B1CE1D7E819D7A431D7C90EA0E5F
-ECC-521
-1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-51953EB9618E1C9A1F929A21A0B68540EEA2DA725B99B315F3B8B489918EF109E156193951EC7E937B1652C0BD3BB1BF073573DF883D2C34F1EF451FD46B503F00
-1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409
-C6858E06B70404E9CD9E3ECB662395B4429C648139053FB521F828AF606B4D3DBAA14B5E77EFE75928FE1DC127A2FFA8DE3348B3C1856A429BF97E7E31C2E5BD66
-11839296A789A3BC0045C8A5FB42C7D1BD998F54449579B446817AFBD17273E662C97EE72995EF42640C550B9013FAD0761353C7086A272C24088BE94769FD16650
-[...]
-```
-
-The original ssh keypair has probably been generated with dropbearkey as it generates formats asked for our ssh session: rsa-ssh and dss.
-
-`dropbear` version is `v2014.65`.
-Are there any [exploits](https://www.cvedetails.com/version/939378/Dropbear-Ssh-Project-Dropbear-Ssh-2014.65.html) to break in?
-For example [here](https://www.cvedetails.com/cve/CVE-2016-7408/) it is mentioned that `dbclient` (dropbear's ssh client) "allows remote attackers to execute arbitrary code via a crafted (1) -m or (2) -c argument." in a privilege escalation vulnerability.
-
-Using `dbclient` instead of `ssh` led me to something interesting: a prompt for a password. See how to replicate below.
+On the router, the `dropbear` version is `v2014.65`.
+We need to build that version on our machine to succeed.
+Using `dbclient` instead of `ssh` prompts us for a password.
+To connect with this method, check the section on how to build a root-access firmware and follow this:
 
 ```console
 $ wget https://src.fedoraproject.org/repo/pkgs/dropbear/dropbear-2014.65.tar.bz2/1918604238817385a156840fa2c39490/dropbear-2014.65.tar.bz2
@@ -690,17 +660,6 @@ $ ./configure && make
 $ ./dbclient 192.168.1.1 -p 1288
 # prompted for a password!
 ```
-
-Some informations (e.g. intended user `root`) can also be found in the file `./etc/inetd.conf` : 
-
-```console
-$ cat ./etc/inetd.conf
-:::1287     stream  tcp6     nowait  root    /usr/sbin/diaglog        diaglog push
-:::1288     stream  tcp6     nowait  root    /usr/sbin/dropbear       dropbear -i
-```
-
-- Search for exploits (CVE details) - [https://www.cvedetails.com](https://www.cvedetails.com)
-- Search for exploits (rapid7) - [https://www.rapid7.com/db/search](https://www.rapid7.com/db/search)
 
 ### telnet
 
@@ -713,21 +672,104 @@ diaglog[14373] [push/] aborted: no default route defined
 Connection closed by foreign host.
 ```
 
-The "no default route defined" originates from `./usr/sbin/diaglog` script.
+The "_aborted: no default route defined_" message originates from the script `/usr/sbin/diaglog`.
 
-### Busybox console
+## Root access
 
-During boot process, Busybox let a login prompt stay for hostname `nb6vac`, waiting for a user and password.
+Getting root access requires to build a custom flashable firmware.
+Here I describe how to proceed to build your own (I can share you mine if you ask).
+
+1. Identify the current firmware version installed on your router, and [download it](#Available-firmwares). I'll proceed with `4.0.45d`.
+
+2. Official firmwares come with WFI tags ("whole flash image" tags).
+Those tags are used for the CRC check: if they don't match the content of the firmware, flash is aborted.
+WFI tags are located at the end of the file (last `20` bytes), and are read and extracted (i.e. removed) before flashing.
+Let's remove them from our firmware file:
 
 ```console
-init started: BusyBox v1.22.1 (2022-01-23 21:14:10 UTC)
-Please press Enter to activate this console. (none) login:
-
-[NB6VAC-FXC-r1][NB6VAC-MAIN-R4.0.45d][NB6VAC-XDSL-A2pv6F039p]
-nb6vac login:
+$ FIRMWARE_SIZE=$(du -b NB6VAC-MAIN-R4.0.45d | awk '{print $1}')
+$ dd if=NB6VAC-MAIN-R4.0.45d of=custom-firmware.bin count=$(( FIRMWARE_SIZE - 20 )) bs=1
 ```
 
-- [https://github.com/vallejocc/Hacking-Busybox-Control/raw/master/routers_userpass.txt](https://github.com/vallejocc/Hacking-Busybox-Control/raw/master/routers_userpass.txt)
+3. At the moment, we are forced to keep the original JFFS2 partition (containing bootloader and encrypted kernel).
+It is located before the first UBI partition. Let's separate the JFFS2 and UBI partition:
+
+```console
+$ CUT_SECTION=$(binwalk custom-firmware.bin 2>/dev/null | grep UBI | awk '{print $1}')
+$ dd if=custom-firmware.bin of=jffs2-custom.bin count=${CUT_SECTION} bs=1
+$ dd if=custom-firmware.bin of=ubi-custom.ubi skip=${CUT_SECTION} bs=1
+```
+
+4. Mount the UBI image on your host (some actions below are superfluous but harmless, we will trim them later):
+
+```console
+$ modprobe nandsim first_id_byte=0xef  \
+                   second_id_byte=0xf1 \
+                   third_id_byte=0x00  \
+                   fourth_id_byte=0x95 \
+                   parts=1,259,259,496,8
+$ cat /proc/mtd | grep -i "NAND Simulator"
+    ...
+mtd3: 02060000 00020000 "NAND simulator partition 2" # rootfs2
+    ...
+$ modprobe ubi
+$ flash_erase /dev/mtd3 0 259
+$ nandwrite /dev/mtd3 ubi-custom.ubi
+$ ubiattach -O 2048 -m 3 -d 3
+$ mkdir /mnt/ubifs
+$ mount -tubifs /dev/ubi3_0 /mnt/ubifs
+$ cd /mnt/ubifs
+```
+
+5. Set your own `root` password
+
+To gain root access we have to change this file in the UBI filesystem: `./etc/shadow`.
+It contains the `root` password hash.
+We will generate our own hash and replace it.
+
+```console
+$ YOUR_HASH=$(openssl passwd -6 -salt your_salt your_password)
+$ sed -i "s#^root.*#${YOUR_HASH}#" ./etc/shadow
+```
+
+6. Build back a UBI image from the filesystem:
+
+```console
+$ cd -
+$ mkfs.ubifs -m 2048 -e 126976 -c 131072 -v -r /mnt/ubifs -o new-ubi.img --compr="zlib"
+$ cat > ubinize.cfg << EOF
+[ubifs]
+mode=ubi
+image=new-ubi.img
+vol_id=0
+vol_type=dynamic
+vol_name="rootfs_ubifs"
+vol_flags=autoresize
+EOF
+$ IMG_SEQ=$(ubireader_display_info NB6VAC-MAIN-R4.0.45d| grep -Eo "Sequence Num: .*" | sed "s/Sequence Num: //")
+$ ubinize -O 2048 -p 128KiB -m 2048 -s 2048 -o new-ubi-custom.ubi -v ubinize.cfg --image-seq=${IMG_SEQ}
+```
+
+7. Merge the JFFS2 with the new UBI image:
+
+```console
+$ dd if=jffs2-custom.bin of=custom-firmware.bin bs=1 status=progress
+$ dd if=new-ubi-custom.ubi of=custom-firmware.bin bs=1 seek=$(du -b jffs2-custom.bin | awk '{print $1}') status=progress
+```
+
+8. Append new correct WFI tags (use `mk-wfi` available from this repo):
+
+```console
+$ ./mk-wfi -i custom-firmware.bin -o your-firmware.bin
+```
+
+9. Clean up some files before flashing `your-firmware.bin`:
+
+```console
+$ rm jffs2-custom.bin ubi-custom.ubi new-ubi.img new-ubi-custom.ubi custom-firmware.bin
+```
+
+After flashing, you can root access your router via UART (or SSH with `dropbear`, see further below).
 
 # Miscellaneous
 
@@ -752,44 +794,129 @@ Waiting for a prompt...
 - [https://github.com/danitool/bootloader-dump-tools](https://github.com/danitool/bootloader-dump-tools)
 
 
-## Build back UBIfs images from filesystem
+## Build back UBIFS images from filesystem
 
-| WARNING                    |
-|:---------------------------|
-| The method below did not work, but I let it stay for future tests |
+Take your NAND dump and slice it according to the partition table of the CFE (`boot`,`rootfs1`,`rootfs2`,`data`,`bbt`).
 
-Generate a UBI image from a directory: `mkfs.ubifs`, and `ubinize`. See [here](https://unix.stackexchange.com/questions/231379/make-ubi-filesystem-image-from-directories) for basic.
+1. Simulate a NAND MT-device with `nandsim`
 
-- `mkfs.ubifs` :
-    * `-m` = Min I/O
-    * `-e` = LEB (logical eraser block)
-    * `-c` = Maximum count of LEB (the number of PEB [should be fine](https://linux-mtd.infradead.narkive.com/b8RsnS9M/confusion-ubi-overhead-and-volume-size-calculations)
-
-- `ubinize` :
-    * `-m` = Min I/O
-    * `-p` = PEB size
-    * `-s` = Min I/O unit used for UBI headers (e.g. sub-page size in case of NAND)
-    * below I `binwalked` the firmware and saw VID:
-    * `-O` = offset if the VID header from start of the physical eraseblock
-
-Create a `ubinize.cfg` **with an empty line at the end** :
 ```console
+$ modprobe nandsim first_id_byte=0xef  \
+                   second_id_byte=0xf1 \
+                   third_id_byte=0x00  \
+                   fourth_id_byte=0x95 \
+                   parts=1,259,259,496,8
+```
+
+We use the NAND id for the bytes values:
+
+```console
+[    0.672000] brcmnand_read_id: CS0: dev_id=eff10095
+```
+
+2. Find out MT-devices id, and identify the one you want to mount (in my case it is going to be `rootfs1` for the emergency firmware filesystem for testing, so `mtd4`):
+
+```console
+$ cat /proc/mtd | grep -i "NAND Simulator"
+mtd3: 00020000 00020000 "NAND simulator partition 0" # boot
+mtd4: 02060000 00020000 "NAND simulator partition 1" # rootfs1
+mtd5: 02060000 00020000 "NAND simulator partition 2" # rootfs2
+mtd6: 03e00000 00020000 "NAND simulator partition 3" # data
+mtd7: 00100000 00020000 "NAND simulator partition 4" # bbt
+mtd8: 00020000 00020000 "NAND simulator partition 5" # flash_end (I guess?)
+```
+
+3. Load UBI kernel module
+
+```console
+$ modprobe ubifs #?
+$ modprobe ubi
+```
+
+4. Erase MT-device (you may skip this step)
+
+```console
+$ flash_erase /dev/mtd3 0 1
+$ flash_erase /dev/mtd4 0 259
+$ flash_erase /dev/mtd5 0 259
+$ flash_erase /dev/mtd6 0 496
+$ flash_erase /dev/mtd7 0 8
+```
+
+<!-- 5. Flash the UBI image with ubiformat. -->
+<!--  -->
+<!-- The `--vid-hdr-offset` parameter is findable with `binwalk NB6VAC-MAIN-R4.0.45d`. -->
+<!--  -->
+<!-- ```console -->
+<!-- $ ubiformat /dev/mtd3 -y -f ./_MY_DUMP.extracted/280000.ubi --vid-hdr-offset=0x800 #--sub-page-size=??? -->
+<!-- ``` -->
+
+5. Write the UBIFS image you want to modify in the MTD device:
+
+```console
+$ ./cd <path_to_sliced_firmware>
+$ nandwrite /dev/mtd4 rootfs1
+```
+
+6. Attach MT-device to UBI with `ubiattach` and note the UBI device number
+
+```console
+$ ubiattach -O 2048 -m 4 -d 4 # or # ubiattach -p /dev/mtd4
+UBI device number 0, total 259 LEBs (32886784 bytes, 31.3 MiB), available 1 LEBs (126976 bytes, 124.0 KiB), LEB size 126976 bytes (124.0 KiB)
+```
+
+7. Mount it with `mount`:
+
+```console
+$ mkdir /mnt/ubifs
+$ mount -tubifs /dev/ubi4_0 /mnt/ubifs
+```
+
+8. Make the changes to the filesystem.
+
+9. Create UBIFS with `mkfs.ubifs`:
+
+```console
+$ mkfs.ubifs -m 2048 -e 126976 -c 131072 -v -r /mnt/ubifs -o new-rootfs1.img --compr="zlib"
+```
+
+10. Create UBI image with `ubinize`. First genereate a config file:
+
+```console
+$ cat > ubinize.cfg << EOF
 [ubifs]
 mode=ubi
-image=output.img
+image=new-rootfs1.img
 vol_id=0
-vol_size=100MiB
 vol_type=dynamic
-vol_name=rootfs
+vol_name="rootfs_ubifs"
 vol_flags=autoresize
-
-# above is a necessary empty line
-```    
-
+EOF
 ```
-mkfs.ubifs -m 2048 -e 126976 -c 131072 -r ./fsb-root/ output.img
-ubinize -o rootfs.ubi -p 131072 -m 2048 -O 2048 ubinize.cfg # -s 2048
+
+Then run:
+
+```console
+$ ubinize -O 2048 -p 128KiB -m 2048 -s 2048 -o final.ubi -v ubinize.cfg --image-seq=1558008590
 ```
+
+(the `--image-seq` is copied from the one in the official firmware; see `ubireader_display_info NB6VAC-MAIN-R4.0.45d | grep Sequence`)
+
+The resulting `final.ubi` can then be merged with the `jffs2` partition of a firmware (see my `./merge` script) and need to be added TAGS before flashing.
+
+If we were to specify a `vol_size=30MiB` in `ubinize.cfg`, we would have the following error (followed by a kernel panic):
+
+```console
+[    1.254000] UBI error: vtbl_check: volume table check failed: record 0, error 9
+[    1.262000] UBI error: ubi_init: cannot attach mtd2
+...
+```
+
+It would be due to [a too big UBI image](https://wsym.tistory.com/entry/UBI-error-vtblcheck-volume-table-check-failed-record-0-error-9).*
+Removing `vol_size` is the key.
+
+[https://unix.stackexchange.com/questions/428238/how-can-i-change-a-single-file-from-an-ubi-image](https://unix.stackexchange.com/questions/428238/how-can-i-change-a-single-file-from-an-ubi-image)
+[https://mytechrants.wordpress.com/2010/01/20/ubiubifs-on-nandsim/](https://mytechrants.wordpress.com/2010/01/20/ubiubifs-on-nandsim/)
 
 ## An upgrade script
 
@@ -936,62 +1063,19 @@ $ FILE="./ubifs-root/802285087/rootfs_ubifs/www/fcgiroot/apid"
 $ find $FILE -type f -exec sha256sum {} \;
 ```
 
-I guess if we come to modify some of those files, we would need to change those values accordingly.
+I thought modifying some of those files would require to change sha256sums accordingly, but that does not seem the case.
 
-## Execute binaries from the UBIFS
+## Execute binaries from the UBIFS without emulating
 
 Architecture is `MIPS` and we can use `qemu` to emulate it.
-Here is an exemple of execution of `bin/busybox cat` (inside the directory `rootfs_ubifs`) :
+Here is an example with `/bin/busybox cat` (inside the directory `rootfs_ubifs`) :
 
 ```console
-$ qemu-mips -L . bin/busybox cat
+$ qemu-mips -L . ./bin/busybox cat
 ```
 
 Note that we need to link a library contained in the root directory of the UBIFS with `-L .`.
-To check if `bin/busybox` needs a specific library we can `readelf -d bin/busybox | grep NEEDED`.
-
-## Directly modifying the binary does not work
-
-Changing a single byte directly on the firmware binary (using `rehex`) makes it unflashable, even if the correct WFI TAG remains.
-Where and how is this verification done? Is that because of CRC?
-
-* Flashing an official firmware (`4.0.45d`):
-
-```
-Finished loading 19660820 bytes
-Try upgrade firmware....
-image size = 19660800, flash size = 134217728
-WFI TAG :
-	wfiVersion : 0x5732
-	wfiChipId : 0x63268
-	wfiFlashType : 0x3
-	wfiCrc : 0x23fdfc84
-	wfiFlags : 2
-Flashing image with SFR FIRMWARE
-No NAND partition selected, use the older : 2
-Erasing previous partition
-Erasing BBT
-......................................................................................................................................................
-
-Writing OOB sequence: 00 09
-Success write sequence number in OOB
-Flash FIRMWARE Success
-```
-
-* Flashing the same firmware with a single byte changed (the byte corresponds to a non important string letter):
-
-```
-Finished loading 19660820 bytes
-Try upgrade firmware....
-image size = 19660800, flash size = 134217728
-WFI TAG :
-	wfiVersion : 0x5732
-	wfiChipId : 0x63268
-	wfiFlashType : 0x3
-	wfiCrc : 0x23fdfc84
-	wfiFlags : 2
-Illegal whole flash image
-```
+To check if `/bin/busybox` needs a specific library we can `readelf -d ./bin/busybox | grep NEEDED`.
 
 ## Vulnerability with `samba`?
 
@@ -1007,120 +1091,15 @@ Might take a look inside those files.
 
 ## Provoke a kernel panic
 
-On page `http://192.168.1.1/maintenance/system`, loading an excessively heavy file in "Importer mes paramètres/Import my parameters" provoke the following kernel panic:
-
-```console
-[  262.759000] wps_monitor invoked oom-killer: gfp_mask=0x201da, order=0, oom_adj=0, oom_score_adj=0
-[  262.768000] Call Trace:
-[  262.770000] [<8002eba0>] vprintk+0x4c0/0x530
-[  262.774000] [<8002ebc0>] vprintk+0x4e0/0x530
-[  262.779000] [<80039a2c>] del_timer_sync+0x38/0x54
-[  262.784000] [<8035b6d4>] schedule_timeout+0xa4/0xcc
-[  262.789000] [<80358a5c>] dump_header.isra.10+0x70/0x178
-[  262.794000] [<801ca770>] MCUProtocolWaitForCommandAnswer+0xa4/0x114
-[  262.801000] [<80357e54>] dump_stack+0x8/0x34
-[  262.805000] [<80358a5c>] dump_header.isra.10+0x70/0x178
-[  262.810000] [<8004e8fc>] blocking_notifier_call_chain+0x14/0x20
-[  262.816000] [<8007d3ac>] out_of_memory+0xb8/0x388
-[  262.821000] [<80081250>] __alloc_pages_nodemask+0x52c/0x634
-[  262.827000] [<80079cfc>] find_get_page+0x98/0xb8
-[  262.832000] [<8007c4c4>] filemap_fault+0x2e4/0x424
-[  262.837000] [<80090004>] __do_fault+0xd0/0x3a4
-[  262.841000] [<8009263c>] handle_pte_fault+0x2d4/0x990
-[  262.846000] [<8003b9a4>] __set_task_blocked+0x64/0x78
-[  262.852000] [<8003d924>] set_current_blocked+0x30/0x4c
-[  262.857000] [<80092e10>] handle_mm_fault+0x118/0x158
-[  262.862000] [<8018789c>] __up_read+0x24/0xac
-[  262.866000] [<8001d3c4>] do_page_fault+0x114/0x400
-[  262.871000] [<8003aa68>] recalc_sigpending+0x10/0x30
-[  262.876000] [<8003b9a4>] __set_task_blocked+0x64/0x78
-[  262.882000] [<800a4514>] vfs_read+0xb8/0x108
-[  262.886000] [<80017288>] sys_sigreturn+0x78/0xbc
-[  262.891000] [<80013344>] ret_from_exception+0x0/0x10
-[  262.896000] 
-[  262.897000] 
-[  262.899000] Call Trace:
-[  262.901000] [<80357e54>] dump_stack+0x8/0x34
-[  262.906000] [<80358a5c>] dump_header.isra.10+0x70/0x178
-[  262.911000] [<8007d3ac>] out_of_memory+0xb8/0x388
-[  262.916000] [<80081250>] __alloc_pages_nodemask+0x52c/0x634
-[  262.922000] [<8007c4c4>] filemap_fault+0x2e4/0x424
-[  262.927000] [<80090004>] __do_fault+0xd0/0x3a4
-[  262.931000] [<8009263c>] handle_pte_fault+0x2d4/0x990
-[  262.936000] [<80092e10>] handle_mm_fault+0x118/0x158
-[  262.942000] [<8001d3c4>] do_page_fault+0x114/0x400
-[  262.946000] [<80013344>] ret_from_exception+0x0/0x10
-[  262.952000] 
-[  262.953000] FAP Information:
-[  262.956000] FAP0: [0]:0000fabf [1]:00000102 [2]:00000000 [3]:00000000 [4]:00000000 [5]:00000000 [6]:00000000 [7]:00000000 [8]:00000000 [9]:00000000 
-[  262.970000] FAP1: [0]:0000fabf [1]:00000102 [2]:00000000 [3]:00000000 [4]:00000000 [5]:00000000 [6]:00000000 [7]:00000000 [8]:00000000 [9]:00000000 
-[  262.983000] 
-[  262.985000] Mem-Info:
-[  262.987000] DMA per-cpu:
-[  262.990000] CPU    0: hi:    0, btch:   1 usd:   0
-[  262.995000] CPU    1: hi:    0, btch:   1 usd:   0
-[  263.000000] Normal per-cpu:
-[  263.003000] CPU    0: hi:   42, btch:   7 usd:   0
-[  263.008000] CPU    1: hi:   42, btch:   7 usd:   0
-[  263.013000] active_anon:1225 inactive_anon:0 isolated_anon:0
-[  263.013000]  active_file:0 inactive_file:2 isolated_file:0
-[  263.013000]  unevictable:13322 dirty:0 writeback:0 unstable:0
-[  263.013000]  free:456 slab_reclaimable:323 slab_unreclaimable:11659
-[  263.013000]  mapped:8 shmem:0 pagetables:132 bounce:0
-[  263.042000] DMA free:588kB min:180kB low:224kB high:268kB active_anon:0kB inactive_anon:0kB active_file:0kB inactive_file:0kB unevictable:11016kB isolated(anon):0kB isolated(file):0kB present:16256kB mlocked:0kB dirty:0kB writeback:0kB mapped:0kB shmem:0kB slab_reclaimable:24kB slab_unreclaimable:0kB kernel_stack:0kB pagetables:0kB unstable:0kB bounce:0kB writeback_tmp:0kB pages_scanned:2754 all_unreclaimable? yes
-[  263.080000] lowmem_reserve[]: 0 107 107
-[  263.083000] Normal free:1236kB min:1236kB low:1544kB high:1852kB active_anon:4900kB inactive_anon:0kB active_file:0kB inactive_file:8kB unevictable:42272kB isolated(anon):0kB isolated(file):0kB present:109776kB mlocked:276kB dirty:0kB writeback:0kB mapped:32kB shmem:0kB slab_reclaimable:1268kB slab_unreclaimable:46636kB kernel_stack:1408kB pagetables:528kB unstable:0kB bounce:0kB writeback_tmp:0kB pages_scanned:358 all_unreclaimable? yes
-[  263.124000] lowmem_reserve[]: 0 0 0
-[  263.127000] DMA: 1*4kB 1*8kB 0*16kB 0*32kB 1*64kB 0*128kB 0*256kB 1*512kB 0*1024kB 0*2048kB 0*4096kB = 588kB
-[  263.137000] Normal: 6*4kB 2*8kB 1*16kB 1*32kB 0*64kB 1*128kB 0*256kB 0*512kB 1*1024kB 0*2048kB 0*4096kB = 1240kB
-[  263.147000] 13257 total pagecache pages
-[  263.160000] 31757 pages RAM
-[  263.162000] 1474 pages reserved
-[  263.166000] 42 pages shared
-[  263.168000] 24222 pages non-shared
-[  263.172000] [ pid ]   uid  tgid total_vm      rss cpu oom_adj oom_score_adj name
-[  263.180000] [  351]     0   351      351       18   1       0             0 login
-[  263.187000] [  648]     0   648      348       13   0       0             0 watchdog
-[  263.195000] [  659]     0   659      351       17   0       0             0 crond
-[  263.203000] [  673]     0   673      350       16   0       0             0 inetd
-[  263.211000] [  678]     0   678      338       45   0       0             0 syslog-ng
-[  263.219000] [  744]     0   744      262       17   0       0             0 wrapper
-[  263.227000] [  745]     0   745      895      126   1       0             0 nbd
-[  263.234000] [ 1405]     0  1405     1534       36   0       0             0 swmdk
-[  263.242000] [ 2935]     0  2935      262       16   1       0             0 wrapper
-[  263.250000] [ 2943]     0  2943      262       17   1       0             0 wrapper
-[  263.258000] [ 2962]     0  2962      351       18   0       0             0 udhcpc
-[  263.265000] [ 2992]     0  2992      351       19   1       0             0 udhcpc
-[  263.273000] [ 3009]     0  3009      262       18   1       0             0 wrapper
-[  263.281000] [ 3012]     0  3012      232       28   0       0             0 odhcp6c
-[  263.289000] [ 3093]     0  3093      351       16   1       0             0 loop.sh
-[  263.297000] [ 3119] 65534  3119      211       14   1       0             0 wold
-[  263.305000] [ 3143]     0  3143      317       31   1       0             0 miniupnpd
-[  263.313000] [ 3152] 65534  3152      342       25   0       0             0 lan-topology
-[  263.321000] [ 3154] 65534  3154      342       25   1       0             0 lan-topology
-[  263.329000] [ 3196] 65534  3196      287       32   1       0             0 dnsmasq
-[  263.337000] [ 3197]     0  3197      287       31   1       0             0 dnsmasq
-[  263.345000] [ 3210]     0  3210      334       51   0       0             0 eapd
-[  263.353000] [ 3215]     0  3215      466      166   1       0             0 nas
-[  263.360000] [ 3573]     0  3573      362       68   1       0             0 acsd
-[  263.368000] [ 3583]     0  3583      390       52   0       0             0 wps_monitor
-[  263.376000] [ 3636]     0  3636      262       17   1       0             0 wrapper
-[  263.384000] [ 3681]     0  3681      262       16   1       0             0 wrapper
-[  263.392000] [ 3697]     0  3697      583      166   1       0             0 lighttpd
-[  263.400000] [ 3700]     1  3700      628       31   1       0             0 apid
-[  263.407000] [ 3706]     1  3706      777      124   0       0             0 fastcgi
-[  263.415000] [ 3748]     0  3748      262       16   1       0             0 wrapper
-[  263.423000] [ 3756]     0  3756      262       18   0       0             0 wrapper
-[  263.431000] [ 4112]     0  4112      348       12   0       0             0 sleep
-[  263.454000] Kernel panic - not syncing: Out of memory: compulsory panic_on_oom is enabled
-[  263.454000] 
-[  263.477000] 
-[  263.477000] stopping CPU 1
-[  263.480000] Rebooting in 3 seconds..
-[  266.509000] kerSysMipsSoftReset: called on----
-```
-
+On page `http://192.168.1.1/maintenance/system`, loading an excessively heavy file in "Importer mes paramètres/Import my parameters" provoke the following kernel panic (see [kernel_panic.log](logs/kernel_panic.log)).
 And the router reboots.
+
+## Difficult to run from CFE and TFTP
+
+Someone from OpenWrt told me official firmwares lack initramfs, and that initramfs is useful to try firmwares on-the-fly without flashing it.
+The CFE offers a `r` command to run firmwares on RAM.
+I have turned that in every way but always failed.
+Someone?
 
 ## About CFE Secure Boot
 
