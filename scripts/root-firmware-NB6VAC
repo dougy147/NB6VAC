@@ -1,0 +1,155 @@
+#!/bin/sh
+# Script from dougy147 (https://github.com/dougy147/NB6VAC)
+
+# root-firmware-NB6VAC:
+# 	Convert official NB6VAC firmwares to root-accessible firmwares.
+# 	Default root pass = root
+
+set -e
+
+dependencies=("ubiattach" "ubidetach" "grep" "modprobe" "dd" "flash_erase" "nandwrite" "mount" "openssl" "mkfs.ubifs" "sed" "chown" "make" "ubinize" "sudo" "ubireader_display_info" "binwalk")
+for d in ${dependencies[@]}
+do
+	if [ ! $(which $d 2>/dev/null) ]
+	then
+		missing=true
+		echo "WARNING: missing dependency '$d'"
+	fi
+done
+if [ -n "$missing" ]
+then
+	echo "ERROR: please fix missing dependencies."
+	exit 1
+fi
+
+usage() {
+	echo "USAGE: $0 <official_firmware> [output_filename] [password]"
+}
+
+if [[ -z "$1" || ! -f "$1" ]]
+then
+	echo "ERROR: firmware not found."
+	usage
+	exit 1
+fi
+
+if [[ "$1" = "-h" || "$1" = "--help" ]]
+then
+	usage
+	exit 0
+fi
+
+OEM_FIRMWARE=$1
+OEM_FIRMWARE_BASE=$(basename $1)
+ROOTED_FIRMWARE=${2:-$OEM_FIRMWARE_BASE-rooted} # output firmware filename
+
+# Extracting WFI from OEM-firmware
+echo "[1/7] Extracting WFI from OEM-firmware"
+if [ ! -f ./extract-wfi/wfi-tag-extract ]
+then
+	pushd ./extract-wfi/
+	make
+	popd
+fi
+./extract-wfi/wfi-tag-extract -i "${OEM_FIRMWARE}" -o "${OEM_FIRMWARE_BASE}-no-wfi"
+
+# Cut JFFS2 and UBI
+echo "[2/7] Splitting JFFS2 and UBI from OEM-firmware"
+CUT_SECTION=$(binwalk "${OEM_FIRMWARE_BASE}-no-wfi" 2>/dev/null | grep UBI | awk '{print $1}')
+if [[ -z $CUT_SECTION || $CUT_SECTION = 0 ]]
+then
+	echo "ERROR: could not find UBI section in ${OEM_FIRMWARE}"
+	exit 1
+fi
+dd if="${OEM_FIRMWARE_BASE}-no-wfi" of=jffs2-custom.bin count=${CUT_SECTION} bs=1 status=progress
+dd if="${OEM_FIRMWARE_BASE}-no-wfi" of=ubi-custom.ubi skip=${CUT_SECTION} bs=1 status=progress
+
+# Mounting UBI image (need sudo privilege)
+echo "[3/7] Mounting UBI image (need sudo privilege)"
+sudo modprobe nandsim first_id_byte=0xef  \
+                   second_id_byte=0xf1 \
+                   third_id_byte=0x00  \
+                   fourth_id_byte=0x95 \
+                   parts=1,259,259,496,8
+
+MTD_DEVICE=$(cat /proc/mtd | grep -i "NAND simulator partition 2" | awk '{print $1}' | sed "s/://")
+MTD_DEVICE_NB=$(grep -Eo "[[:digit:]]+$" <<< "$MTD_DEVICE")
+if [[ -z $MTD_DEVICE || -z $MTD_DEVICE_NB || ! $(grep "mtd" <<< "$MTD_DEVICE") ]]
+then
+	echo "ERROR: could not find MTD device ID to load UBI filesystem into."
+	exit 1
+fi
+
+sudo modprobe ubifs
+sudo modprobe ubi
+echo "Flashing /dev/${MTD_DEVICE} 0 259"
+sudo flash_erase /dev/${MTD_DEVICE} 0 259 >/dev/null
+echo "Writing 'ubi-custom.ubi' -> /dev/${MTD_DEVICE}"
+sudo nandwrite /dev/${MTD_DEVICE} ubi-custom.ubi >/dev/null
+echo "Attaching..."
+sudo ubiattach -O 2048 -m $MTD_DEVICE_NB -d $MTD_DEVICE_NB
+
+UBIFS_DIR=$(mktemp -d)
+sudo mount -tubifs /dev/ubi${MTD_DEVICE_NB}_0 $UBIFS_DIR
+
+# Changing root password in mounted UBI filesystem
+echo "[4/7] Changing root password in mounted UBI filesystem"
+pushd $UBIFS_DIR
+PASSWORD=${3:-root}
+HASH=$(openssl passwd -6 -salt d0u6y147S41t4nDp3pp3r "${PASSWORD}")
+sudo sed -i "s#^root.*#root:${HASH}#" "${UBIFS_DIR}/etc/shadow"
+popd
+
+# Building back a UBI image from filesystem
+echo "[5/7] Building back a UBI image from filesystem"
+sudo mkfs.ubifs -m 2048 -e 126976 -c 131072 -v -r "${UBIFS_DIR}" -o new-ubi.img --compr="zlib"
+sudo chown $USER new-ubi.img
+
+cat > tmp-ubinize.cfg << EOF
+[ubifs]
+mode=ubi
+image=new-ubi.img
+vol_id=0
+vol_type=dynamic
+vol_name="rootfs_ubifs"
+vol_flags=autoresize
+EOF
+
+IMG_SEQ=$(ubireader_display_info "$OEM_FIRMWARE"| grep -Eo "Sequence Num: .*" | sed "s/Sequence Num: //")
+if [[ -z $IMG_SEQ ]]
+then
+	ubinize -O 2048 -p 128KiB -m 2048 -s 2048 -o new-ubi-custom.ubi -v tmp-ubinize.cfg
+else
+	ubinize -O 2048 -p 128KiB -m 2048 -s 2048 -o new-ubi-custom.ubi -v tmp-ubinize.cfg --image-seq=${IMG_SEQ}
+fi
+
+# Merging OEM JFFS2 with new UBI
+echo "[6/7] Merging OEM JFFS2 with new UBI"
+dd if=jffs2-custom.bin of="${ROOTED_FIRMWARE}-no-wfi" bs=1 status=progress
+dd if=new-ubi-custom.ubi of="${ROOTED_FIRMWARE}-no-wfi" bs=1 seek=$(du -b jffs2-custom.bin | awk '{print $1}') status=progress
+
+# Appending new WFI tags
+echo "[7/7] Appending new WFI tags"
+if [ ! -f ./make-wfi/wfi-tag-mk ]
+then
+	pushd ./make-wfi/
+	make
+	popd
+fi
+./make-wfi/wfi-tag-mk -i "${ROOTED_FIRMWARE}-no-wfi" -o "${ROOTED_FIRMWARE}"
+
+echo "INFO: '${ROOTED_FIRMWARE}' has been succesfully created."
+
+# Cleaning
+sudo umount "${UBIFS_DIR}"
+sudo ubidetach -m $MTD_DEVICE_NB
+rm -rf ${OEM_FIRMWARE_BASE}-no-wfi \
+	jffs2-custom.bin           \
+	ubi-custom.ubi             \
+	new-ubi.img                \
+	tmp-ubinize.cfg            \
+	new-ubi-custom.ubi         \
+	${ROOTED_FIRMWARE}-no-wfi  \
+	${UBIFS_DIR} 2>/dev/null
+
+# Last modified: 2024.04.22

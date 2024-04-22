@@ -729,7 +729,7 @@ We will generate our own hash and replace it.
 
 ```console
 $ YOUR_HASH=$(openssl passwd -6 -salt your_salt your_password)
-$ sed -i "s#^root.*#${YOUR_HASH}#" ./etc/shadow
+$ sed -i "s#^root:.*#root:${YOUR_HASH}#" ./etc/shadow
 ```
 
 6. Build back a UBI image from the filesystem:

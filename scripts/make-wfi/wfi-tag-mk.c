@@ -154,7 +154,8 @@ int main (int argc, char **argv) {
   }
 
 
-  printf ("wfi-tag-mk / 2013 - VincentAlex & SGDA / www.neufbox4.org\n\n");
+  printf ("wfi-tag-mk / 2013 - VincentAlex & SGDA / www.neufbox4.org\n");
+  printf ("   > revised 2024 - dougy147 / https://github.com/dougy147/NB6VAC\n\n");
 
   printf ("input file   : %s\n", input);
 
