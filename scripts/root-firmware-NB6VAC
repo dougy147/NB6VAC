@@ -97,7 +97,7 @@ echo "[4/7] Changing root password in mounted UBI filesystem"
 pushd $UBIFS_DIR
 PASSWORD=${3:-root}
 HASH=$(openssl passwd -6 -salt d0u6y147S41t4nDp3pp3r "${PASSWORD}")
-sudo sed -i "s#^root.*#root:${HASH}#" "${UBIFS_DIR}/etc/shadow"
+sudo sed -i "s#^root.*#root:${HASH}:14550:0:99999:7:::#" "${UBIFS_DIR}/etc/shadow"
 popd
 
 # Building back a UBI image from filesystem
