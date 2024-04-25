@@ -25,6 +25,13 @@ This is a work in progress.
 Verbosity is intended.
 Trying to follow along an expert's method on a [similar project](https://github.com/digiampietro/hacking-gemtek).
 
+The UART pins, supposing the router lays on its WiFi and WPS buttons, go as follow (top to bottom):
+
+> GND (TP_UART_GND)
+TX (TP_UART_SOUT)
+RX (TP_UART_SIN)
+3V3 (TP_UART_3V3) <= do not connect this one
+
 Let's start looking at what the serial console prints when booting:
 
 * The boot loader is CFE version 1.0.39
@@ -87,9 +94,9 @@ brcmnandCET: Status -> Deferred
 
 [https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx](https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx)
 
-* The OTP memory chip is a [C8051T634](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf). 
+* The OTP EPROM-based MCU (microcontroller unit) is a [C8051T634](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf). 
 OTP stands for "One Time Programmable".
-It could store factory settings such as keys (see section [About CFE secure boot](#About-CFE-Secure-Boot)).
+It could store factory settings such as keys (see section [About Secure Boot](#About-Secure-Boot)).
 
 ```console
 [    0.611000] sb1_mcu: [MCUProtocolInitialize] OTP MCU (C8051T634) detected.
@@ -679,19 +686,16 @@ The "_aborted: no default route defined_" message originates from the script `/u
 Getting root access requires to build a custom flashable firmware.
 Here I describe how to proceed to build your own (I can share you mine if you ask).
 
-1. Identify the current firmware version installed on your router, and [download it](#Available-firmwares). I'll proceed with `4.0.45d`.
+1. Identify the current firmware version installed on your router, and [download it](#Available-firmwares). I'll proceed with `NB6VAC-MAIN-R4.0.45d`.
 
-2. Official firmwares come with WFI tags ("whole flash image" tags).
-Those tags are used for the CRC check: if they don't match the content of the firmware, flash is aborted.
-WFI tags are located at the end of the file (last `20` bytes), and are read and extracted (i.e. removed) before flashing.
-Let's remove them from our firmware file:
+2. Remove WFI tags from the firmware file:
 
 ```console
 $ FIRMWARE_SIZE=$(du -b NB6VAC-MAIN-R4.0.45d | awk '{print $1}')
 $ dd if=NB6VAC-MAIN-R4.0.45d of=custom-firmware.bin count=$(( FIRMWARE_SIZE - 20 )) bs=1
 ```
 
-3. At the moment, we are forced to keep the original JFFS2 partition (containing bootloader and encrypted kernel).
+3. At the moment, we are forced to keep the original JFFS2 partition (containing bootloader and authenticated kernel).
 It is located before the first UBI partition. Let's separate the JFFS2 and UBI partition:
 
 ```console
@@ -771,6 +775,8 @@ $ rm jffs2-custom.bin ubi-custom.ubi new-ubi.img new-ubi-custom.ubi custom-firmw
 
 After flashing, you can root access your router via UART (or SSH with `dropbear`, see further below).
 
+You can also use [this script](scripts/root-firmware-NB6VAC) that just automates this whole process (`./root-firmware-NB6VAC <firmware>`; root password = `root` by default).
+
 # Miscellaneous
 
 Sections here are not ordered and of various interest.
@@ -779,9 +785,10 @@ Sections here are not ordered and of various interest.
 
 To make a full dump of your NAND:
 
-1) turn the router off and connect its serial to your machine
-2) launch `python3 -m cfenand -D /dev/ttyUSB0 -O nand.bin -t 0.05 nand`
-3) turn the router on
+1) `git clone https://github.com/danitool/bootloader-dump-tools && cd ./bootloader-dump-tools`
+2) turn the router off and connect its serial to your machine
+3) launch `python3 -m cfenand -D /dev/ttyUSB0 -O nand.bin -t 0.05 nand`
+4) turn the router on
 
 ```console
 $ python3 -m cfenand -D /dev/ttyUSB0 -O nand.bin -t 0.05 nand
@@ -793,6 +800,28 @@ Waiting for a prompt...
 
 - [https://github.com/danitool/bootloader-dump-tools](https://github.com/danitool/bootloader-dump-tools)
 
+
+## Build back JFFS2 images from filesystem
+
+Official firmwares come with a JFFS2 partition containing the CFE, secured since `4.0.35`, and a signed kernel.
+This partition is extractable with `binwalk`.
+
+At the moment, I implore you **not touching** the `cferam.000` file unless you know what you are doing.
+And if you do, please contact me!
+
+To repack the JFFS2 image from the filesystem:
+
+```console
+$ ORIGINAL_JFFS2_SIZE=$(du -b 0.jffs) # usually 2490368
+$ mkfs.jffs2 -b -r ./_jffs2-root.extracted -o repacked-no-ubifs-marker.jffs2 -e 128 -p -n -x zlib -x lzo -x rtime --pad=$(( ORIGINAL_JFFS2_SIZE - 256 ))
+$ dd if=0.jffs of=ubifs-headers bs=1 skip=$(( ORIGINAL_JFFS2_SIZE - 256 ))
+$ dd if=repacked-no-ubifs-marker.jffs2 of=repacked.jffs2 bs=1 status=progress
+$ dd if=ubifs-headers of=repacked.jffs2 bs=1 seek=$(du -b repacked-no-ubifs-marker.jffs2 | awk '{print $1}') status=progress
+```
+
+Notice we include UBIFS markers (announcing the UBIFS partition 256 bytes before it) at the end of the JFFS2 partition.
+
+This crafted JFFS2 filesystem may differ from the original (`diff 0.jffs2 repacked.jffs2`) but it is working and bootable when merged back with a valid UBIFS.
 
 ## Build back UBIFS images from filesystem
 
@@ -1101,11 +1130,22 @@ The CFE offers a `r` command to run firmwares on RAM.
 I have turned that in every way but always failed.
 Someone?
 
-## About CFE Secure Boot
+## About Secure Boot
 
-Our router probably does not ship a genuine Broadcom CFE but a crafted SFR/efixo/Altice bootloader (see further below).
-For sure it has a secure boot.
-About that, we read interesting things [here](https://openwrt.org/docs/techref/bootloader/cfe):
+As of today, I am not sure how secure boot works hardware-speaking, but we can read about a common implementation on [Silicon Lab](https://www.silabs.com/security/secure-boot)'s website:
+
+> A common implementation of Secure Boot consists of storing the public key used for code authentication into one-time programmable memory. As the public key becomes irreversible, only code signed with the corresponding private key can be authenticated and executed. Silicon Labs enhanced Secure Boot implementation is called Secure Boot with Root of Trust and Secure Loader (RTSL). Secure Boot with RTSL takes additional steps by following a full chain of trust process. With a dual core architecture, the process starts at the secure element. The code starts from secure immutable ROM and confirms authenticity of the first stage bootloader. It is also checks for updates via a secure loader. Once the secure element is fully verified and available, the second core initiates the second stage authentication and updates are applied, if required. In the final stage, the second stage bootloader checks, updates (if applicable) and authenticates the application code.
+
+I am not sure this is the way our device is conceived, but I have high priors about that hypothesis.
+Interestingly, Silicon Labs is the manufacturer of our device's MCU (OTP MCU C8051T634; if someone wants to check [its datasheet](https://eu.mouser.com/datasheet/2/368/C8051T63x-1397986.pdf)).
+
+So, what probably bothers us about secure boot is we cannot change the first stage bootloader (contained in `cferam.000`) because it is authentified by the ROM.
+
+Completely bypassing the authentication seems the more obvious road to take, but I have found no evidence it is easily feasible.
+Resetting/modifying the OTP appears to be necessary.
+If we could place our own public key in the OTP (resetting them appears to be doable; read further), then we could sign our own bootloader with our matching private key.
+
+Here are additionnal notes about CFE Secure Boot from is what [OpenWrt](https://openwrt.org/docs/techref/bootloader/cfe):
 
 > 1. The SoC has as factory settings, most probably in the OTP fuses, the private key unique per each model and also 2 keys AES CBC (ek & iv). This is the Root of Trust which is known by OEM.
 
@@ -1117,15 +1157,8 @@ About that, we read interesting things [here](https://openwrt.org/docs/techref/b
 
 > 5. CFERAM binary is encoded in JFFS2 filesystem. It must meet a certain structure as CFEROM. The compiled code is usually LZMA compressed and AES CBC encrypted, rendering the resulting binary absolutely meaningless.
 
-Our OTP chip is identified during boot process:
 
-```console
-[    0.598000] sb1_mcu: [MainModuleInitialize] Initializing MCU driver...
-[    0.611000] sb1_mcu: [MCUProtocolInitialize] OTP MCU (C8051T634) detected.
-[    0.618000] sb1_mcu: [MainModuleInitialize] MCU driver successfully initialized.
-```
-
-Reading what the C8051T634 contains could be doable according to [that exchange](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory):
+Reading what the content of our C8051T634 could be doable according to [that exchange](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory):
 
 > QUESTION (truncated):
     [I could] Generate keys and stored them in the flash memory in programming MCU. MCU flash memory's support CRP (code read protection) which prevent from code mining and with assist of its internal AES engine and RNG (random number generation) engine we can make a random key and encrypt flash memory and stored that random key in the OTP (one time programmable memory -a 128 bit encrypted memory), then in code execution we decode flash memory with RNG key and access to initial key and codes. Disadvantage: Keys stored in a non volatile memory, tampers will be useless and attacker have a lot of time to mine keys.
@@ -1133,9 +1166,13 @@ Reading what the C8051T634 contains could be doable according to [that exchange]
 > ANSWER (truncated):
     Don't store keys in nonvolatile memory, you are correct on this. It doesn't matter if you protect the EEPROM or flash memory from being read. That code read protection fuse is easily reversed. An attacker need only decap (remove or chemically etch away the black epoxy packaging to expose the silicon die inside). At this point, they can cover up the part of the die that is non volatile memory cells (these sections are very regular and while individual memory cells are much to small to be seen, the larger structure can be) and a small piece of something opaque to UV is masked over that section. Then the attacker can just shine a UV light on the chip for 5-10 minutes, and reset all the fuses, including the CRP fuse. The OTP memory can now be read by any standard programmer. 
 
+From naive perspective, the best approach is to start reading the [not-so-long datasheet](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf) 🥲.
+You can also take a look at the front [circuit board picture](assets/front_nb6vac-fxc-r0.png) (from a FXC-r0 but it uses the same chip).
+
 - [https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory)
 - [https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf)
 - [https://reversepcb.com/what-is-one-time-programmable-memory/](https://reversepcb.com/what-is-one-time-programmable-memory/)
+- [https://www.silabs.com/security/secure-boot](https://www.silabs.com/security/secure-boot)
 
 
 ## Hidden interface pages
@@ -1152,7 +1189,10 @@ The first one can be useful to change router's IP.
 
 ## Available firmwares
 
-Here are available firmwares for the NB6VAC (NB6VAC-MAIN-R4.x.xx). The bootloader version with which it was released is given. TODO: release date + DSL firmware...
+Here are available firmwares for the NB6VAC (NB6VAC-MAIN-R4.x.xx).
+Please note the announced bootloader **is not** necessarily installed along its the firmware it is attached to in this list.
+On a rooted router, you can check your bootloader version with `status get version_bootloader`.
+Also note that I had a bad experience with downgrading but haven't troubleshooted yet, so unless you know what you are doing, **do not downgrade**.
 
 | Firmware             | Bootloader                     |
 |:--------------------:|:------------------------------:|
@@ -1190,8 +1230,19 @@ $ BOOTLOADER_VERSION="4.0.6"
 $ wget -O bootloader "https://ncdn.nb4dsl.neufbox.neuf.fr/nb6vac_Version%20${FIRMWARE_VERSION}/NB6VAC-BOOTLOADER-R${BOOTLOADER_VERSION}" --no-check-certificate
 ```
 
+(TODO: release date + DSL firmware...)
+
 - [https://web.archive.org/web/20220228112552/https://www.vincentalex.fr/neufbox4.org/forum/viewtopic.php?id=2981](https://web.archive.org/web/20220228112552/https://www.vincentalex.fr/neufbox4.org/forum/viewtopic.php?id=2981)
 
+# WFI tags and CRC
+
+Official firmwares come with WFI tags ("whole flash image" tags).
+Those tags are used for the [CRC32 check](https://github.com/Michaelangel007/crc32): if they don't match the content of the firmware, flash is aborted.
+WFI tags are located at the end of the firmware file (last `20` bytes), and are read and extracted (i.e. removed) before flashing.
+
+So, WFI tags serve to authentify a firmware image (either by the CFE bootloader, either by `/usr/sbin/upgrade` or `/etc/init.d/firmware`).
+
+The CRC32 table is hardcoded in `cferam.000` and is easily extractable with `binwalk`. 
 
 # References
 
@@ -1201,3 +1252,5 @@ $ wget -O bootloader "https://ncdn.nb4dsl.neufbox.neuf.fr/nb6vac_Version%20${FIR
 - [https://stackoverflow.com/questions/33853333/compiling-the-linux-kernel-for-mips](https://stackoverflow.com/questions/33853333/compiling-the-linux-kernel-for-mips)
 - [https://github.com/danitool/bootloader-dump-tools](https://github.com/danitool/bootloader-dump-tools)
 - [https://jg.sn.sg/ontdump/](https://jg.sn.sg/ontdump/)
+- [https://github.com/Michaelangel007/crc32](https://github.com/Michaelangel007/crc32)
+- [https://www.batronix.com/shop/electronic/eprom-programming.html](https://www.batronix.com/shop/electronic/eprom-programming.html)
