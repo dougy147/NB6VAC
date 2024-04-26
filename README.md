@@ -1,10 +1,12 @@
 The goal is to flash an open firmware or to gain root access on a NB6VAC router.
 Any help welcome!
 
-| CURRENT STATE                |
-|:-----------------------------|
-| ✅ root access done!       |
-| ⏲  trying to setup OpenWrt |
+| CURRENT STATE                                            |
+|:---------------------------------------------------------|
+| ✅ [root access](Root-access) done!                      |
+| ⏲  [bypass secure bootloader](#About-Secure-Boot) (need reprogramming the MCU) |
+
+![](assets/MCU_pins.png)
 
 # Material
 
@@ -17,31 +19,80 @@ Any help welcome!
 
 | ![](assets/router.png)| ![](assets/router2.png)|
 |:---------------------:|:----------------------:|
-|                       |                        |
+| [![](assets/front_nb6vac-fxc-r0.png)](assets/back_nb6vac-fxc-r0.png) | [![](assets/back_nb6vac-fxc-r0.png)](assets/back_nb6vac-fxc-r0.png) |
+
+| NOTE |
+|:-----|
+| This is a work in progress. Verbosity is intended. Trying to follow along an expert's method on a [similar project](https://github.com/digiampietro/hacking-gemtek). |
 
 # Forensics on the serial console at boot
 
-This is a work in progress.
-Verbosity is intended.
-Trying to follow along an expert's method on a [similar project](https://github.com/digiampietro/hacking-gemtek).
+Unscrewing the base uncovers four UART connectors (and voids warranty).
 
-The UART pins, supposing the router lays on its WiFi and WPS buttons, go as follow (top to bottom):
+Considering pin 1 to be the closest to the power supply cable, pins respectively correspond to:
 
-> GND (TP_UART_GND)
-TX (TP_UART_SOUT)
-RX (TP_UART_SIN)
-3V3 (TP_UART_3V3) <= do not connect this one
+1. GND (TP_UART_GND)
 
-Let's start looking at what the serial console prints when booting:
+2. TX (TP_UART_SOUT)
+
+3. RX (TP_UART_SIN)
+
+4. VCC 3V3 (TP_UART_3V3) <= do not connect this one
+
+Plugging those pins to a computer (_via_ a TTL-to-USB convertor), we can see what the serial console prints during boot:
+
+```console
+$ minicom -D /dev/ttyUSB0 115200 -C nb6vac-fxc-r1-boot.log
+```
+
+Let's turn the router on and look at it.
 
 * The boot loader is CFE version 1.0.39
 
 ```console
 CFE version 1.0.39-116.174 for BCM963268 (32bit,SP,BE)
 ```
-[https://openwrt.org/docs/techref/bootloader/cfe](https://openwrt.org/docs/techref/bootloader/cfe)
 
-* The CPU is a BCM63168D0 (400MHz), MIPS architecture. The NAND flash chip is 128 mibibytes (128 MiB = 131072 KiB = 134217728 bytes). Here are some more parameters:
+* CFE offers an interactive menu when a key is pressed from the serial at startup.
+It has interesting functions. 
+For example, you can dump memory content (see section [NAND Dump](#NAND-Dump)), change boot parameters, try to run images from a TFTP server, etc. 
+We could make further good use of this.
+
+```console
+*** Press any key to stop auto run (1 seconds) ***
+CFE> help
+Available commands:
+
+fe                  Erase a selected partition of the flash (use fi to display informations).
+fi                  Display informations about the flash partitions.
+fb                  Find NAND bad blocks
+dn                  Dump NAND contents along with spare area
+phy                 Set memory or registers.
+sm                  Set memory or registers.
+dm                  Dump memory or registers.
+db                  Dump bytes.
+dh                  Dump half-words.
+dw                  Dump words.
+ww                  Write the 2 partition, you must choose the 0 wfi tagged image.
+w                   Write the whole image with wfi_tag on the previous partition if wfiFlags field in tag is set to default
+e                   Erase NAND flash
+ws                  Write whole image (priviously loaded by kermit) to flash .
+r                   Run program from flash image or from host depend on [f/h] flag
+p                   Print boot line and board parameter info
+c                   Change booline parameters
+i                   Erase persistent storage data
+a                   Change board AFE ID
+b                   Change board parameters
+reset               Reset the board
+pmdio               Pseudo MDIO access for external switches.
+spi                 Legacy SPI access of external switch.
+force               override chipid check for images.
+help                Obtain help for CFE commands
+```
+
+* The CPU is a BCM63168D0 (400MHz), MIPS architecture. 
+The NAND flash chip is 128 mibibytes (128 MiB = 131072 KiB = 134217728 bytes). 
+Here are some more parameters:
 
 ```console
 Boot Strap Register:  0x1ff97bf
@@ -92,8 +143,6 @@ brcmnand_reset_corr_threshold: CORR ERR threshold changed to 3 bits for CS0
 brcmnandCET: Status -> Deferred
 ```
 
-[https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx](https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx)
-
 * The OTP EPROM-based MCU (microcontroller unit) is a [C8051T634](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf). 
 OTP stands for "One Time Programmable".
 It could store factory settings such as keys (see section [About Secure Boot](#About-Secure-Boot)).
@@ -102,68 +151,7 @@ It could store factory settings such as keys (see section [About Secure Boot](#A
 [    0.611000] sb1_mcu: [MCUProtocolInitialize] OTP MCU (C8051T634) detected.
 ```
 
-* There are multiple WiFi devices (identified by `wl0` and `wl1`), probably for the 2.4GHz and 5GHz frequencies.
-Chips could be a Broadcom BCM43602 (wl0) and a Broadcom BCM435f (wl1).
-The dhd (dongle host driver) has been compiled with OpenWRT.
-There are lines I don't understand but that could be of interest (checking a resource availability in SPROM and OTP; updating SROM from flash if not found; ...).
-
-```console
-[   21.068000] Dongle Host Driver, version 7.14.89.14.cpe4.16L03.0-kdb
-[   21.068000] Compiled from /home/crd/dev/trunk-next/openwrt/build_dir/linux-nova_sb1_sfr/broadcom-dhd/dhd//dhd/sys/dhd_common.c
-[   21.068000] Compiled on Jan 23 2022 at 21:14:37
-[   21.102000] +++++ Added gso loopback support for dev=wl0 <85023800>
-[   21.113000] nvram_get_internal: variable boardrev defaulted to 0x10
-[   21.125000] dhdpcie_download_code_file: download firmware /etc/wlan/dhd/43602a1/rtecdc.bin
-[   21.583000] Neither SPROM nor OTP has valid image
-[   21.588000] wl:srom/otp not programmed, using main memory mapped srom info(wombo board)
-[   21.597000] wl: ID=pci/2/0/
-[   21.600000] wl: ID=pci/2/0/
-[   21.605000] wl: loading /etc/wlan/bcm43602_map.bin
-[   21.610000] wl: updating srom from flash...
-[   21.614000] srom rev:11
-[   21.629000] dhdpcie_bus_write_vars: Download, Upload and compare of NVRAM succeeded.
-[   21.682000] PCIe shared addr (0x001e8b0c) read took 42023 usec before dongle is ready
-...
-[   22.055000] CONSOLE: 000000.036 wl0: Broadcom BCM43602 802.11 Wireless Controller 7.35.177.83 (r669233)
-...
-[   24.360000] wl1: Broadcom BCM435f 802.11 Wireless Controller 7.14.89.14.cpe4.16L03.0-kdb
-```
-
-* CFE offers an interactive menu when a key is pressed from the serial at startup. It has interesting functions. For example, you can dump memory content (see section [NAND Dump](#NAND-Dump)), change boot parameters, try to run images from a TFTP server, etc. We could make further good use of this.
-
-```console
-*** Press any key to stop auto run (1 seconds) ***
-CFE> help
-Available commands:
-
-fe                  Erase a selected partition of the flash (use fi to display informations).
-fi                  Display informations about the flash partitions.
-fb                  Find NAND bad blocks
-dn                  Dump NAND contents along with spare area
-phy                 Set memory or registers.
-sm                  Set memory or registers.
-dm                  Dump memory or registers.
-db                  Dump bytes.
-dh                  Dump half-words.
-dw                  Dump words.
-ww                  Write the 2 partition, you must choose the 0 wfi tagged image.
-w                   Write the whole image with wfi_tag on the previous partition if wfiFlags field in tag is set to default
-e                   Erase NAND flash
-ws                  Write whole image (priviously loaded by kermit) to flash .
-r                   Run program from flash image or from host depend on [f/h] flag
-p                   Print boot line and board parameter info
-c                   Change booline parameters
-i                   Erase persistent storage data
-a                   Change board AFE ID
-b                   Change board parameters
-reset               Reset the board
-pmdio               Pseudo MDIO access for external switches.
-spi                 Legacy SPI access of external switch.
-force               override chipid check for images.
-help                Obtain help for CFE commands
-```
-
-* The kernel is probably lzma compressed (infered from `binwalk`), and is authenticated before decompression.
+* The kernel is probably lzma compressed (infered from `binwalk` and [that source](http://skaya.enix.org/wiki/CfeKernel)), and is authenticated before decompression.
 There are useful memory addresses at that stage.
 The latest boot image starts at `0xba080000` with a flash offset of `0x02080000`. 
 
@@ -187,9 +175,12 @@ DECIMAL       HEXADECIMAL     DESCRIPTION
 34078720      0x2080000       JFFS2 filesystem, big endian
 ```
 
-The starting program is the kernel. It is entered at `0x80351e30`.
+The starting program is the kernel. It is entered at address `0x80351e30`.
 
 * Kernel version is `3.4.11-rt19` (_rt_ means real-time) with command line `ro noinitrd  console=ttyS0,115200 earlyprintk debug irqaffinity=0`.
+Build number 2 (`#2`). 
+It is built for multiprocessor computers (`SMP`; for Symmetric Multi-Processing).
+It is preemptible (`PREEMPT`), meaning it can be interrupted in the middle of executing code to handle other threads.
 The CPU instruction set is `Broadcom BMIPS4350`.
 
 ```console
@@ -205,9 +196,6 @@ Starting program at 0x80351e30
 [    0.023000]   DEBUG_MUTEXES=0
 ```
 
-Kernel build number is `#2`. 
-It is built to function on a multiprocessor computer (`SMP`; for Symmetric Multi-Processing).
-The kernel is preemptible (`PREEMPT`), meaning it can be interrupted in the middle of executing code to handle other threads.
 You can take a look at the extracted kernel configuration file [here](misc/kernel_config).
 
 * The root filesystem is a `ubifs filesystem` :
@@ -242,7 +230,8 @@ Here is a transposition of the above partition table in number of blocks of 1024
 ```
 
 I know nothing about MTD or [UBIFS](https://www.sciencedirect.com/science/article/pii/S2666281723002081), but we can see overlaps of `30720` blocks between `*-images` and their matching filesystems.
-For example, `rootfs-image` and `rootfs` both ends at block `66432`, but `rootfs-image` starts earlier, containing a portion of `2432` unshared blocks with `rootfs` (2490368 bytes). The same goes for `upgrade-image` and `upgrade`.
+For example, `rootfs-image` and `rootfs` both ends at block `66432`, but `rootfs-image` starts earlier, containing a portion of `2432` unshared blocks with `rootfs` (2490368 bytes). 
+The same goes for `upgrade-image` and `upgrade`.
 
 Extracting those unshared portions from `rootfs-image` and `upgrade-image` with `dd`, we can see they perfectly match JFFS2 partitions contained in some official firmwares (`cferam.000` + `secram.000` + `vmlinux.lz` + `vmlinux.sig`).
 Respectively, `rootfs-image` and `upgrade-image`  match firmwares `4.0.45d` and `4.0.44k`.
@@ -254,8 +243,6 @@ $ dd if=NB6VAC-MAIN-R4.0.45d of=firmware-4.04.45d-jffs2 count=2432 bs=1024
 $ diff -s firmware-4.04.45d-jffs2 rootfs-image-jffs2
 Files firmware-4.04.45d-jffs2 and rootfs-image-jffs2 are identical
 ```
-
-Further comparisons could be interesting.
 
 * NAND representation (**not the partition table!**)
 
@@ -291,15 +278,6 @@ CFE> fi
 flash_end   offset=0x07f00400, blocks=1024
 ```
 
-On the filesystem, `/etc/fstab` is simply populated with:
-
-```console
-proc	/proc		proc	defaults	0 0
-none	/dev/pts	devpts	defaults	0 0
-sysfs	/sys		sysfs	defaults	0 0
-tmpfs	/tmp		tmpfs	defaults,mode=1777	0 0
-```
-
 * UBIFS Markers are announced `256` bytes before the `rootfs` and `upgrade` start.
 
 ```console
@@ -307,21 +285,13 @@ tmpfs	/tmp		tmpfs	defaults,mode=1777	0 0
 [    0.889000] ***** Found UBIFS Marker at 0x0027ff00
 ```
 
-An extracted UBIFS Marker looks like this: four times the string `BcmFs-ubifs.` (`42 63 6d 46 73 2d 75 62 69 66 73 00`).
+UBIFS Marker looks like this:
 
 ```console
-$ dd if=MY_DUMP of=rootfs-image_ubifs-marker bs=1 skip=$(( (35712 * 1024) - 256)) count=256
-256+0 records in
-256+0 records out
-256 bytes copied, 0.000307293 s, 833 kB/s
-
-$ hexdump -C rootfs-image_ubifs-marker
 00000000  42 63 6d 46 73 2d 75 62  69 66 73 00 42 63 6d 46  |BcmFs-ubifs.BcmF|
 00000010  73 2d 75 62 69 66 73 00  42 63 6d 46 73 2d 75 62  |s-ubifs.BcmFs-ub|
 00000020  69 66 73 00 42 63 6d 46  73 2d 75 62 69 66 73 00  |ifs.BcmFs-ubifs.|
 00000030  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
-*
-00000100
 ```
 
 * Partition 3 (mtd2; rootfs) is a UBI file system using `zlib` compression attached to `ubi0` (UBI device 0, volume 0, name = "rootfs_ubifs").
@@ -489,7 +459,7 @@ ubiattach /dev/ubi_ctrl -m 5 -d 1
 mount -t ubifs -o noatime ubi1:data_ubifs /overlay/
 ```
 
-Continuing with `/etc/preinit`, there are switches between directories, and noticably a `pivot_root` between `/root` and `/rom`:
+Continuing with `/etc/preinit`, there are switches between directories, and noticeably a `pivot_root` between `/root` and `/rom`:
 
 ```console
 mount -t overlayfs overlayfs -olowerdir=/,upperdir=/overlay /root
@@ -646,40 +616,22 @@ PORT      STATE SERVICE     VERSION
 
 ### SSH
 
-Even with root access, I did not manage to connect with `ssh` to the router:
+If you try to connect with `ssh` you'll get that error:
 
 ```console
 $ ssh 192.168.1.1 -p 1288
 Unable to negotiate with 192.168.1.1 port 1288: no matching host key type found. Their offer: ssh-rsa,ssh-dss
 ```
 
-On the router, the `dropbear` version is `v2014.65`.
-We need to build that version on our machine to succeed.
-Using `dbclient` instead of `ssh` prompts us for a password.
-To connect with this method, check the section on how to build a root-access firmware and follow this:
+You'll need root access and `dbclient` from an old version of `dropbear` (v2014.65) to connect with this method.
 
 ```console
 $ wget https://src.fedoraproject.org/repo/pkgs/dropbear/dropbear-2014.65.tar.bz2/1918604238817385a156840fa2c39490/dropbear-2014.65.tar.bz2
 $ tar xvjf ./dropbear-2014.65.tar.bz2
 $ cd ./dropbear-2014.65
 $ ./configure && make
-# no need to install
 $ ./dbclient 192.168.1.1 -p 1288
-# prompted for a password!
 ```
-
-### telnet
-
-```console
-$ telnet 192.168.1.1 1287
-Trying 192.168.1.1...
-Connected to 192.168.1.1.
-Escape character is '^]'.
-diaglog[14373] [push/] aborted: no default route defined
-Connection closed by foreign host.
-```
-
-The "_aborted: no default route defined_" message originates from the script `/usr/sbin/diaglog`.
 
 ## Root access
 
@@ -732,7 +684,7 @@ It contains the `root` password hash.
 We will generate our own hash and replace it.
 
 ```console
-$ YOUR_HASH=$(openssl passwd -6 -salt your_salt your_password)
+$ YOUR_HASH=$(openssl passwd -6 -salt YOUR_SALT YOUR_PASSWORD)
 $ sed -i "s#^root:.*#root:${YOUR_HASH}#" ./etc/shadow
 ```
 
@@ -767,15 +719,82 @@ $ dd if=new-ubi-custom.ubi of=custom-firmware.bin bs=1 seek=$(du -b jffs2-custom
 $ ./mk-wfi -i custom-firmware.bin -o your-firmware.bin
 ```
 
-9. Clean up some files before flashing `your-firmware.bin`:
+After flashing, you can root access your router via UART (or SSH with `dropbear`, see above).
+
+To automate this whole process you can use [this script](scripts/root-firmware-NB6VAC). 
+Simply feed it with an authentic firmware, an output filename and the password you want (optional; by default password=`root`):
 
 ```console
-$ rm jffs2-custom.bin ubi-custom.ubi new-ubi.img new-ubi-custom.ubi custom-firmware.bin
+$ ./root-firmware-NB6VAC <firmware> [output_filename] [your_password]
 ```
 
-After flashing, you can root access your router via UART (or SSH with `dropbear`, see further below).
+| GOOD BUT...                                              |
+|:---------------------------------------------------------|
+| Being root is not enough if we want more control like installing another kernel, changing the bootloader, etc. The problem is secure boot. |
 
-You can also use [this script](scripts/root-firmware-NB6VAC) that just automates this whole process (`./root-firmware-NB6VAC <firmware>`; root password = `root` by default).
+
+## About Secure Boot
+
+⚠ If you are interested in reversing the MCU, I will publish some discoveries [here](mcu/README.md). Feel free to help!
+
+As of today, I am not sure how secure boot works hardware-speaking, but we can read about a common implementation on [Silicon Lab](https://www.silabs.com/security/secure-boot)'s website:
+
+> A common implementation of Secure Boot consists of storing the public key used for code authentication into one-time programmable memory. As the public key becomes irreversible, only code signed with the corresponding private key can be authenticated and executed. Silicon Labs enhanced Secure Boot implementation is called Secure Boot with Root of Trust and Secure Loader (RTSL). Secure Boot with RTSL takes additional steps by following a full chain of trust process. With a dual core architecture, the process starts at the secure element. The code starts from secure immutable ROM and confirms authenticity of the first stage bootloader. It is also checks for updates via a secure loader. Once the secure element is fully verified and available, the second core initiates the second stage authentication and updates are applied, if required. In the final stage, the second stage bootloader checks, updates (if applicable) and authenticates the application code.
+
+I am not sure this is the way our device is conceived, but I have high priors about that hypothesis.
+Interestingly, Silicon Labs is the manufacturer of our OTP MCU C8051T634 ([datasheet](https://eu.mouser.com/datasheet/2/368/C8051T63x-1397986.pdf)).
+
+Here are additionnal notes about CFE Secure Boot from [OpenWrt](https://openwrt.org/docs/techref/bootloader/cfe):
+
+> 1. The SoC has as factory settings, most probably in the OTP fuses, the private key unique per each model and also 2 keys AES CBC (ek & iv). This is the Root of Trust which is known by OEM.
+
+> 2. During boot, the PBL (Primary Boot Loader coded in the SoC) will search for storage peripherals e.g. NAND or NOR SPI. If found then loads a small portion from start of storage into memory. Exact amount may depend on model and storage but most typically 64kb. In the sources this chunk is called CFEROM.
+
+> 3. Once loaded the CFEROM, the PBL will analyse the structure, which is a compound of different chunks: valid header, magic numbers, signed credentials, CRC32, actual compiled code, etc. In the end, the PBL will decide if CFEROM meets the structure required and it is properly signed. If this is so, then the PBL will execute the compiled code encapsulated. Note that this code is usually not encrypted and therefore can be detected with naked eyes.
+
+> 4. Typically, CFEROM will start PLL's and full memory span. Most probably doesn't need to run a storage driver since it is already working. Then it will jump to CFERAM location as coded
+
+> 5. CFERAM binary is encoded in JFFS2 filesystem. It must meet a certain structure as CFEROM. The compiled code is usually LZMA compressed and AES CBC encrypted, rendering the resulting binary absolutely meaningless.
+
+So, our problem with secure boot is we cannot change the first stage bootloader (contained in `cferam.000`) because it is authentified by the ROM.
+
+Completely bypassing the authentication seems the more obvious road to take, but I have found no evidence it is easily feasible ([someone did it](https://limitedresults.com/2019/11/pwn-the-esp32-forever-flash-encryption-and-sec-boot-keys-extraction/) on a ESP32 MCU).
+Resetting/modifying the OTP appears to be necessary.
+If we could place our own public key in the OTP, then we could sign our own bootloader with our matching private key.
+That is an interesting track to follow.
+
+It appears reading the content of OTP [is possible](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory) with some tricks:
+
+> QUESTION (truncated):
+    [I could] Generate keys and stored them in the flash memory in programming MCU. MCU flash memory's support CRP (code read protection) which prevent from code mining and with assist of its internal AES engine and RNG (random number generation) engine we can make a random key and encrypt flash memory and stored that random key in the OTP (one time programmable memory -a 128 bit encrypted memory), then in code execution we decode flash memory with RNG key and access to initial key and codes. Disadvantage: Keys stored in a non volatile memory, tampers will be useless and attacker have a lot of time to mine keys.
+
+> ANSWER (truncated):
+    Don't store keys in nonvolatile memory, you are correct on this. It doesn't matter if you protect the EEPROM or flash memory from being read. That code read protection fuse is easily reversed. An attacker need only decap (remove or chemically etch away the black epoxy packaging to expose the silicon die inside). At this point, they can cover up the part of the die that is non volatile memory cells (these sections are very regular and while individual memory cells are much to small to be seen, the larger structure can be) and a small piece of something opaque to UV is masked over that section. Then the attacker can just shine a UV light on the chip for 5-10 minutes, and reset all the fuses, including the CRP fuse. The OTP memory can now be read by any standard programmer. 
+
+As reading means getting access, I suppose writing would then be possible too.
+Further research is necessary.
+
+As I'm doing this out of pure curiosity, I'd be happy receiving advices.
+
+The C8051T634 is programmed with [this](https://www.digikey.com/en/products/detail/silicon-labs/C8051T630DK/1801845) development kit, but I am looking for free and open source solutions.
+
+As of now, I have found those four aligned pins, soldered some wires, and connected them to an Arduino to communicate through the C2 interface with the MCU.
+
+![](assets/MCU_pins.png)
+
+⚠ If you are interested in reversing the MCU, I will publish some discoveries [here](mcu/README.md). Feel free to help!
+
+Some references:
+
+- [https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory)
+- [https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf)
+- [https://reversepcb.com/what-is-one-time-programmable-memory/](https://reversepcb.com/what-is-one-time-programmable-memory/)
+- [https://www.silabs.com/security/secure-boot](https://www.silabs.com/security/secure-boot)
+- [https://www.infineon.com/dgdl/Infineon-AN214842_CYW4390X_OTP_Programming_and_Using_Secure_Boot_and_Secure_Flash-ApplicationNotes-v03_00-EN.pdf?fileId=8ac78c8c7cdc391c017d0d2825596315](https://www.infineon.com/dgdl/Infineon-AN214842_CYW4390X_OTP_Programming_and_Using_Secure_Boot_and_Secure_Flash-ApplicationNotes-v03_00-EN.pdf?fileId=8ac78c8c7cdc391c017d0d2825596315)
+- [https://limitedresults.com/2019/11/pwn-the-esp32-forever-flash-encryption-and-sec-boot-keys-extraction/](https://limitedresults.com/2019/11/pwn-the-esp32-forever-flash-encryption-and-sec-boot-keys-extraction/)
+- [https://www.silabs.com/support/training/efr32-series-2-wireless-soc-security/secure-boot-with-rtsl](https://www.silabs.com/support/training/efr32-series-2-wireless-soc-security/secure-boot-with-rtsl)
+
+Secure boot with root of trust and secure loader from Silicon Labs is [documented here](https://www.silabs.com/documents/public/application-notes/an1218-secure-boot-with-rtsl.pdf) but it is for Series 2 (?). I have also found [this set of instructions](https://www.infineon.com/dgdl/Infineon-AN214842_CYW4390X_OTP_Programming_and_Using_Secure_Boot_and_Secure_Flash-ApplicationNotes-v03_00-EN.pdf?fileId=8ac78c8c7cdc391c017d0d2825596315) on how to program a CYW4390X OTP. Even if it is different from our model, it should contain clues.
 
 # Miscellaneous
 
@@ -941,7 +960,7 @@ If we were to specify a `vol_size=30MiB` in `ubinize.cfg`, we would have the fol
 ...
 ```
 
-It would be due to [a too big UBI image](https://wsym.tistory.com/entry/UBI-error-vtblcheck-volume-table-check-failed-record-0-error-9).*
+It would be due to [a too big UBI image](https://wsym.tistory.com/entry/UBI-error-vtblcheck-volume-table-check-failed-record-0-error-9).
 Removing `vol_size` is the key.
 
 [https://unix.stackexchange.com/questions/428238/how-can-i-change-a-single-file-from-an-ubi-image](https://unix.stackexchange.com/questions/428238/how-can-i-change-a-single-file-from-an-ubi-image)
@@ -1011,7 +1030,7 @@ To be continued.
 
 ## Stored passwords
 
-### `/etc/shadow` (high interest)
+### `/etc/shadow`
 
 In the `4.0.45d` firmware filesystem in `/etc/shadow` we find hashes:
 
@@ -1052,7 +1071,7 @@ As of today, I have tried every 4-char passwords (mask = `?a?a?a?a`), and 5-char
 
 ### Randomly found hashes
 
-[That guy](https://github.com/Cyril-Meyer/NB6VAC-FXC/tree/main/firmware-reverse-engineering) found two SHA256 hashes investigating the firmware `NB6VAC-MAIN-R4.0.40`:
+[That guy](https://github.com/Cyril-Meyer/NB6VAC-FXC/tree/main/firmware-reverse-engineering) found two SHA256 hashes investigating a NAND dump (firmware `NB6VAC-MAIN-R4.0.40`):
 
 ```
 ff85a28634619b414f1c6e8d14c4c545a822720884536a7032e57debfbebb904
@@ -1130,51 +1149,6 @@ The CFE offers a `r` command to run firmwares on RAM.
 I have turned that in every way but always failed.
 Someone?
 
-## About Secure Boot
-
-As of today, I am not sure how secure boot works hardware-speaking, but we can read about a common implementation on [Silicon Lab](https://www.silabs.com/security/secure-boot)'s website:
-
-> A common implementation of Secure Boot consists of storing the public key used for code authentication into one-time programmable memory. As the public key becomes irreversible, only code signed with the corresponding private key can be authenticated and executed. Silicon Labs enhanced Secure Boot implementation is called Secure Boot with Root of Trust and Secure Loader (RTSL). Secure Boot with RTSL takes additional steps by following a full chain of trust process. With a dual core architecture, the process starts at the secure element. The code starts from secure immutable ROM and confirms authenticity of the first stage bootloader. It is also checks for updates via a secure loader. Once the secure element is fully verified and available, the second core initiates the second stage authentication and updates are applied, if required. In the final stage, the second stage bootloader checks, updates (if applicable) and authenticates the application code.
-
-I am not sure this is the way our device is conceived, but I have high priors about that hypothesis.
-Interestingly, Silicon Labs is the manufacturer of our device's MCU (OTP MCU C8051T634; if someone wants to check [its datasheet](https://eu.mouser.com/datasheet/2/368/C8051T63x-1397986.pdf)).
-
-So, what probably bothers us about secure boot is we cannot change the first stage bootloader (contained in `cferam.000`) because it is authentified by the ROM.
-
-Completely bypassing the authentication seems the more obvious road to take, but I have found no evidence it is easily feasible.
-Resetting/modifying the OTP appears to be necessary.
-If we could place our own public key in the OTP (resetting them appears to be doable; read further), then we could sign our own bootloader with our matching private key.
-
-Here are additionnal notes about CFE Secure Boot from is what [OpenWrt](https://openwrt.org/docs/techref/bootloader/cfe):
-
-> 1. The SoC has as factory settings, most probably in the OTP fuses, the private key unique per each model and also 2 keys AES CBC (ek & iv). This is the Root of Trust which is known by OEM.
-
-> 2. During boot, the PBL (Primary Boot Loader coded in the SoC) will search for storage peripherals e.g. NAND or NOR SPI. If found then loads a small portion from start of storage into memory. Exact amount may depend on model and storage but most typically 64kb. In the sources this chunk is called CFEROM.
-
-> 3. Once loaded the CFEROM, the PBL will analyse the structure, which is a compound of different chunks: valid header, magic numbers, signed credentials, CRC32, actual compiled code, etc. In the end, the PBL will decide if CFEROM meets the structure required and it is properly signed. If this is so, then the PBL will execute the compiled code encapsulated. Note that this code is usually not encrypted and therefore can be detected with naked eyes.
-
-> 4. Typically, CFEROM will start PLL's and full memory span. Most probably doesn't need to run a storage driver since it is already working. Then it will jump to CFERAM location as coded
-
-> 5. CFERAM binary is encoded in JFFS2 filesystem. It must meet a certain structure as CFEROM. The compiled code is usually LZMA compressed and AES CBC encrypted, rendering the resulting binary absolutely meaningless.
-
-
-Reading what the content of our C8051T634 could be doable according to [that exchange](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory):
-
-> QUESTION (truncated):
-    [I could] Generate keys and stored them in the flash memory in programming MCU. MCU flash memory's support CRP (code read protection) which prevent from code mining and with assist of its internal AES engine and RNG (random number generation) engine we can make a random key and encrypt flash memory and stored that random key in the OTP (one time programmable memory -a 128 bit encrypted memory), then in code execution we decode flash memory with RNG key and access to initial key and codes. Disadvantage: Keys stored in a non volatile memory, tampers will be useless and attacker have a lot of time to mine keys.
-
-> ANSWER (truncated):
-    Don't store keys in nonvolatile memory, you are correct on this. It doesn't matter if you protect the EEPROM or flash memory from being read. That code read protection fuse is easily reversed. An attacker need only decap (remove or chemically etch away the black epoxy packaging to expose the silicon die inside). At this point, they can cover up the part of the die that is non volatile memory cells (these sections are very regular and while individual memory cells are much to small to be seen, the larger structure can be) and a small piece of something opaque to UV is masked over that section. Then the attacker can just shine a UV light on the chip for 5-10 minutes, and reset all the fuses, including the CRP fuse. The OTP memory can now be read by any standard programmer. 
-
-From naive perspective, the best approach is to start reading the [not-so-long datasheet](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf) 🥲.
-You can also take a look at the front [circuit board picture](assets/front_nb6vac-fxc-r0.png) (from a FXC-r0 but it uses the same chip).
-
-- [https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory](https://electronics.stackexchange.com/questions/198274/storing-a-secure-key-in-an-embedded-devices-memory)
-- [https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf](https://www.keil.com/dd/docs/datashts/silabs/c8051t63x.pdf)
-- [https://reversepcb.com/what-is-one-time-programmable-memory/](https://reversepcb.com/what-is-one-time-programmable-memory/)
-- [https://www.silabs.com/security/secure-boot](https://www.silabs.com/security/secure-boot)
-
-
 ## Hidden interface pages
 
 Just in case, as reported [here](https://github.com/Cyril-Meyer/NB6VAC-FXC) the router's interface has some hidden but accessible pages:
@@ -1247,6 +1221,8 @@ The CRC32 table is hardcoded in `cferam.000` and is easily extractable with `bin
 # References
 
 - [https://github.com/digiampietro/hacking-gemtek](https://github.com/digiampietro/hacking-gemtek)
+- [https://openwrt.org/docs/techref/bootloader/cfe](https://openwrt.org/docs/techref/bootloader/cfe)
+- [https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx](https://openwrt.org/docs/techref/hardware/soc/soc.broadcom.bcm63xx)
 - [https://www.coresecurity.com/core-labs/articles/next-generation-ubi-and-ubifs](https://www.coresecurity.com/core-labs/articles/next-generation-ubi-and-ubifs)
 - [https://piped.video/watch?v=Ai8J3FG8kys](https://piped.video/watch?v=Ai8J3FG8kys) 
 - [https://stackoverflow.com/questions/33853333/compiling-the-linux-kernel-for-mips](https://stackoverflow.com/questions/33853333/compiling-the-linux-kernel-for-mips)
@@ -1254,3 +1230,4 @@ The CRC32 table is hardcoded in `cferam.000` and is easily extractable with `bin
 - [https://jg.sn.sg/ontdump/](https://jg.sn.sg/ontdump/)
 - [https://github.com/Michaelangel007/crc32](https://github.com/Michaelangel007/crc32)
 - [https://www.batronix.com/shop/electronic/eprom-programming.html](https://www.batronix.com/shop/electronic/eprom-programming.html)
+- [https://jcjc-dev.com/2020/10/20/learning-to-decap-ics/](https://jcjc-dev.com/2020/10/20/learning-to-decap-ics/)
